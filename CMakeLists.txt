@@ -36,9 +36,11 @@ set(IMGUI_SRC
 
 add_library(imgui ${IMGUI_SRC})
 
+
 # -----------------------------------------------------------------------------
 # Find system libraries
 # -----------------------------------------------------------------------------
+
 
 find_package(OpenGL REQUIRED)
 find_package(PkgConfig REQUIRED)
@@ -46,6 +48,7 @@ pkg_search_module(GLFW REQUIRED glfw3)
 include_directories(${GLFW_INCLUDE_DIRS})
 link_libraries(${GLFW_LIBRARIES})
 
+include_directories(external)
 
 # -----------------------------------------------------------------------------
 # Executable
@@ -61,3 +64,4 @@ target_link_libraries(angler
     glfw
     OpenGL::GL
 )
+

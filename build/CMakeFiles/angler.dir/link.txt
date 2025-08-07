@@ -1,0 +1,1 @@
+/usr/bin/c++ -Wl,--dependency-file=CMakeFiles/angler.dir/link.d CMakeFiles/angler.dir/src/core/angler.cpp.o -o angler  -lglfw libglad.a libimgui.a -lglfw /usr/lib/x86_64-linux-gnu/libGLX.so /usr/lib/x86_64-linux-gnu/libOpenGL.so

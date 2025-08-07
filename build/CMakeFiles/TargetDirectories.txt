@@ -1,0 +1,5 @@
+/home/kali/angler/build/CMakeFiles/glad.dir
+/home/kali/angler/build/CMakeFiles/imgui.dir
+/home/kali/angler/build/CMakeFiles/angler.dir
+/home/kali/angler/build/CMakeFiles/edit_cache.dir
+/home/kali/angler/build/CMakeFiles/rebuild_cache.dir

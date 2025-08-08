@@ -5,6 +5,7 @@
 #include <cstring>
 #include <imgui.h>  
 #include <stdint.h>
+#include <limits>
 
 
 const char* ImGuiColNames[ImGuiCol_COUNT] = {
@@ -93,10 +94,12 @@ bool SaveStyleToScale(const char* filename, const std::vector<ImVec4>& colors) {
 }
 
 void PrintColors(const std::vector<ImVec4>& colors) {
-    for (size_t i = 0; i < colors.size(); ++i) {
+    size_t limit = std::min(colors.size(), (size_t)ImGuiCol_COUNT);
+    for (size_t i = 0; i < limit; ++i) {
         const ImVec4& c = colors[i];
-        std::cout << i << ": " << ImGuiColNames[i] << " = ("
-                  << c.x << ", " << c.y << ", " << c.z << ", " << c.w << ")\n";
+        const char* name = ImGui::GetStyleColorName(i);
+        std::cout << i << ": " << name << " = ("
+          << c.x << ", " << c.y << ", " << c.z << ", " << c.w << ")\n";
     }
 }
 
@@ -120,34 +123,47 @@ int main(int argc, char** argv) {
         std::cout << "\nEnter color index to edit (-1 to quit): ";
         int idx;
         std::cin >> idx;
+    
+        if (std::cin.fail()) {
+            std::cin.clear(); // Clear the failbit
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Discard bad input
+            std::cout << "Invalid input. Please enter a number.\n";
+            continue;
+        }
+    
         if (idx < 0 || idx >= (int)colors.size())
             break;
-
+    
         ImVec4& c = colors[idx];
         std::cout << "Current value of " << ImGuiColNames[idx] << ": ("
                   << c.x << ", " << c.y << ", " << c.z << ", " << c.w << ")\n";
-
+    
         std::cout << "Enter new RGBA values (0.0 to 1.0) separated by spaces: ";
         float r, g, b, a;
         std::cin >> r >> g >> b >> a;
-
+    
+        if (std::cin.fail()) {
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            std::cout << "Invalid color input. Skipping update.\n";
+            continue;
+        }
+    
         // Clamp values to 0..1
-        r = (r < 0.0f) ? 0.0f : ((r > 1.0f) ? 1.0f : r);
-        g = (g < 0.0f) ? 0.0f : ((g > 1.0f) ? 1.0f : g);
-        b = (b < 0.0f) ? 0.0f : ((b > 1.0f) ? 1.0f : b);
-        a = (a < 0.0f) ? 0.0f : ((a > 1.0f) ? 1.0f : a);
-
+        r = (r < 0.0f) ? 0.0f : (r > 1.0f ? 1.0f : r);
+        g = (g < 0.0f) ? 0.0f : (g > 1.0f ? 1.0f : g);
+        b = (b < 0.0f) ? 0.0f : (b > 1.0f ? 1.0f : b);
+        a = (a < 0.0f) ? 0.0f : (a > 1.0f ? 1.0f : a);
+        
+    
         c = {r, g, b, a};
-
+    
         std::cout << "Color updated.\n";
+
     }
 
-    if (!SaveStyleToScale(filename, colors)) {
-        std::cout << "Failed to save file.\n";
-        return 1;
-    }
+    SaveStyleToScale(filename, colors);
 
-    std::cout << "Saved colors to " << filename << "\n";
 
     return 0;
 }

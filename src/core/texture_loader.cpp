@@ -3,6 +3,7 @@
 #include <glad/glad.h>
 #include <string>
 
+
 GLuint LoadTextureFromFile(const char* filename, int* out_width, int* out_height)
 {
     int width, height, channels;

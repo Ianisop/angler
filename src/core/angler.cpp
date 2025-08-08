@@ -9,6 +9,7 @@
 #include "icons.h"
 #include "user_dirs.h"
 #include "angler_file_io.h"
+#include "file_indexer.h"
 
 #include <vector>
 #include <iostream>
@@ -23,6 +24,12 @@ static bool dragging = false;
 static ImVec2 drag_offset;
 int FONT_SIZE = 18; // global font size
 bool scale_loaded = false; // tracks if a theme has been loaded
+static char search_buf[256] = "";      // Input buffer for search query
+static std::vector<IndexedFile> results;
+bool show_search_input = false;
+bool is_searching = false;
+bool search_ready = false;
+std::thread indexing_thread;
 
 
 // -- SIDEBAR --
@@ -74,6 +81,7 @@ bool LoadAnglerTabData(const std::string& filename = "cache.angler") {
 
     return true;
 }
+
 
 
 
@@ -145,7 +153,7 @@ void RunAnglerWidgets() {
 
     std::string window_title = current_tab ? ("Angler: " + current_tab->name) : "Angler";
 
-    ImGui::Text(window_title.c_str());
+    ImGui::Text("%s", window_title.c_str());
 
     ImGui::SameLine(ImGui::GetWindowWidth() - 90);
     if (ImGui::Button("_")) {
@@ -175,6 +183,7 @@ void RunAnglerWidgets() {
                  ImGuiWindowFlags_NoMove |
                  ImGuiWindowFlags_NoCollapse);
     
+    //TODO: move this somewhere so it doesnt get ran all the time
     auto folder_icon_texture = Icons::FetchIconTextureByType(Icons::FOLDER,16, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL);
     //ImGui::Image((void*)(intptr_t)my_texture, ImVec2(Icons::ICON_SIZE_SMALL, Icons::ICON_SIZE_SMALL));
 
@@ -205,11 +214,103 @@ void RunAnglerWidgets() {
         ImGui::SameLine();
         ImGui::SetCursorScreenPos(ImVec2(pos.x + Icons::ICON_SIZE_SMALL + 6, pos.y + (selectable_size.y - text_size.y) * 0.5f));
         ImGui::TextUnformatted(tabs[i].name.c_str());
+
+        // Right-click detection on the selectable widget
+        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+            ImGui::OpenPopup(("TabContextMenu" + std::to_string(i)).c_str());
+        }
+    
+        if (ImGui::BeginPopup(("TabContextMenu" + std::to_string(i)).c_str())) {
+            if (ImGui::MenuItem("Unpin Tab")) {
+        
+                tabs.erase(tabs.begin() + i);
+                if (current_tab_index >= i) {
+                    current_tab_index = std::max(0, current_tab_index - 1);
+                    current_tab = (tabs.empty() ? nullptr : &tabs[current_tab_index]);
+                }
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::MenuItem("Rename Tab")) {
+                // Handle rename logic here 
+            }
+            if (ImGui::MenuItem("Search In Tab")) {
+                show_search_input = true;
+                search_buf[0] = '\0'; // Clear previous search
+            }
+            ImGui::EndPopup();
+        }
+        
     
         ImGui::PopID();
     }
     
+    if (show_search_input) {
+        ImGui::SeparatorText("Search Files");
+        if (ImGui::InputText("Query", search_buf, sizeof(search_buf), ImGuiInputTextFlags_EnterReturnsTrue)) {
+            if (!is_searching && current_tab) {
+                is_searching = true;
+                search_ready = false;
+        
+                std::string tab_path = current_tab->path;
+                std::string search_query = search_buf;
+        
+                indexing_thread = std::thread([tab_path, search_query]() {
+                    FileIndexer::StartIndexing(tab_path);
+                    while (FileIndexer::IsIndexing()) {
+                        //std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                        std::cout << "Searching in: " << tab_path << " for: " << search_query << std::endl;
 
+                    }
+                    results = FileIndexer::Search(search_query);
+                    search_ready = true;
+                    is_searching = false;
+                });
+                indexing_thread.detach();
+            }
+        }
+        if (ImGui::Button("Search")) {
+            if (!is_searching && current_tab != nullptr) {
+                is_searching = true;
+                search_ready = false;
+        
+                std::string tab_path = current_tab->path;
+                std::string search_query = search_buf;
+        
+                results.clear();
+        
+                indexing_thread = std::thread([tab_path, search_query]() {
+                    std::cout << "Searching in: " << tab_path << " for: " << search_query << std::endl;
+                    FileIndexer::StartIndexing(tab_path);
+                    while (FileIndexer::IsIndexing()) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    }
+                    results = FileIndexer::Search(search_query);
+                    search_ready = true;
+                    is_searching = false;
+                });
+                indexing_thread.detach();
+            } else {
+                std::cerr << "Search skipped:" << current_tab << std::endl;
+            }
+        }
+        
+                
+    
+        // Progress indicator
+        if (is_searching) {
+            std::cout << "Searching...\n"; 
+        }
+    
+        if (search_ready) {
+            ImGui::SeparatorText("Results");
+    
+            for (const auto& file : results) {
+                ImGui::BulletText("%s", file.path.c_str());
+            }
+        }
+    }
+    
+    
     ImGui::End();
 
     // RIGHT PANE
@@ -235,7 +336,38 @@ void RunAnglerWidgets() {
                  ImGuiWindowFlags_NoCollapse |
                  ImGuiWindowFlags_NoTitleBar);
 
-
+                 if (search_ready) {
+                    ImGui::SeparatorText("Search Results");
+                
+                    auto file_icon_texture = Icons::FetchIconTextureByType(Icons::DEFAULT, 32, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL);
+                
+                    for (size_t i = 0; i < results.size(); ++i) {
+                        const auto& file = results[i];
+                        ImGui::PushID(static_cast<int>(i));
+                
+                        // Draw file icon
+                        ImGui::Image((void*)(intptr_t)file_icon_texture, ImVec2(Icons::ICON_SIZE_SMALL, Icons::ICON_SIZE_SMALL));
+                
+                        // Same line - draw the button with the file name
+                        ImGui::SameLine();
+                
+                        // Extract file name from full path
+                        std::string filename;
+                        size_t last_slash = file.path.find_last_of("/\\");
+                        if (last_slash != std::string::npos)
+                            filename = file.path.substr(last_slash + 1);
+                        else
+                            filename = file.path;
+                
+                        if (ImGui::Button(filename.c_str())) {
+                            // TODO: open file, or preview, or log
+                            std::cout << "Clicked on file: " << file.path << std::endl;
+                        }
+                
+                        ImGui::PopID();
+                    }
+                }
+                
 
     ImGui::End();
     ImGui::PopStyleColor();
@@ -315,6 +447,7 @@ int main() {
     }
 
     // Cleanup
+    FileIndexer::Shutdown();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();

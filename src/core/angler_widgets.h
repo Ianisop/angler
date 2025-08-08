@@ -7,6 +7,7 @@
 struct Tab {
     std::string name;
     std::string path;
-    Icons::ICON_TYPE icon_type;
+    Tab(std::string tab_name, std::string tab_path)
+        : name(tab_name), path(tab_path) {}
     
 };

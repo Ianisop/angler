@@ -7,25 +7,28 @@
 #include "angler_widgets.h"
 #include "style_manager.cpp"
 #include "icons.h"
-
+#include "user_dirs.h"
+#include "angler_file_io.h"
 
 #include <vector>
 #include <iostream>
-
+#include <fstream>
+#include <sstream>
 
 
 // -- GLOBALS --
-#define FONT_SIZE 20
 GLFWwindow* window;
 int display_w, display_h;
 static bool dragging = false;
 static ImVec2 drag_offset;
+int FONT_SIZE = 18; // global font size
+bool scale_loaded = false; // tracks if a theme has been loaded
 
 
 // -- SIDEBAR --
 std::vector<Tab> tabs;
 int current_tab_index = -1;
-bool scale_loaded = false;
+Tab* current_tab = nullptr;
 
 
 
@@ -33,6 +36,44 @@ void glfw_error_callback(int error, const char* description) {
     std::cerr << "GLFW Error " << error << ": " << description << std::endl;
 }
 
+
+bool LoadAnglerTabData(const std::string& filename = "cache.angler") {
+    std::ifstream infile(filename);
+    if (!infile.is_open()) {
+        std::cerr << "Failed to open .angler file, creating one with name: " << filename << std::endl;
+        tabs.push_back({"Home", UserDirectories::Get(UserDir::Home)});
+        tabs.push_back({"Documents", UserDirectories::Get(UserDir::Documents)});
+        tabs.push_back({"Desktop", UserDirectories::Get(UserDir::Desktop)});
+
+        AnglerFileIO::SaveTabsToFile(filename);
+        current_tab_index = 0;
+        return true;
+    }
+
+    tabs.clear();
+
+    std::string line;
+    while (std::getline(infile, line)) {
+        size_t separator = line.find('|');
+        if (separator == std::string::npos) {
+            std::cerr << "Invalid line in .angler file: " << line << std::endl;
+            continue;
+        }
+
+        std::string name = line.substr(0, separator);
+        std::string path = line.substr(separator + 1);
+
+        tabs.push_back(Tab(name, path));
+    }
+
+    infile.close();
+
+    if (!tabs.empty()) {
+        current_tab_index = 0;
+    }
+
+    return true;
+}
 
 
 
@@ -102,15 +143,18 @@ void RunAnglerWidgets() {
     
     ImGui::SameLine(ImGui::GetWindowWidth() / 2);
 
-    ImGui::Text("Angler");
+    std::string window_title = current_tab ? ("Angler: " + current_tab->name) : "Angler";
+
+    ImGui::Text(window_title.c_str());
 
     ImGui::SameLine(ImGui::GetWindowWidth() - 90);
     if (ImGui::Button("_")) {
-        // Minimize
+        //TODO: Minimize
     }
     ImGui::SameLine();
     if (ImGui::Button("□")) {
-        // Maximize toggle
+        //TODO: Maximize toggle
+       
     }
     ImGui::SameLine();
     if (ImGui::Button("X")) {
@@ -131,25 +175,46 @@ void RunAnglerWidgets() {
                  ImGuiWindowFlags_NoMove |
                  ImGuiWindowFlags_NoCollapse);
     
-    auto my_texture = Icons::FetchIconTextureByType(Icons::VIDEO,64, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL);
-    ImGui::Image((void*)(intptr_t)my_texture, ImVec2(Icons::ICON_SIZE_SMALL, Icons::ICON_SIZE_SMALL));
+    auto folder_icon_texture = Icons::FetchIconTextureByType(Icons::FOLDER,16, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL);
+    //ImGui::Image((void*)(intptr_t)my_texture, ImVec2(Icons::ICON_SIZE_SMALL, Icons::ICON_SIZE_SMALL));
 
+    // Handle tabs
     for (int i = 0; i < tabs.size(); ++i) {
-        if (ImGui::Selectable(tabs[i].name.c_str(), current_tab_index == i)) {
+        ImGui::PushID(i);
+    
+        // Begin selectable but we won't use Selectable() for now, to allow icon + text layout:
+        bool selected = (current_tab_index == i);
+    
+        // Calculate the selectable size to include icon + text
+        ImVec2 text_size = ImGui::CalcTextSize(tabs[i].name.c_str());
+        ImVec2 selectable_size = ImVec2(Icons::ICON_SIZE_SMALL + 4 + text_size.x, text_size.y + 4);
+    
+        if (ImGui::Selectable("", selected, 0, selectable_size)) {
             current_tab_index = i;
+            current_tab = &tabs[i];
         }
+    
+        // Position cursor to draw icon on the left inside the selectable area
+        ImVec2 pos = ImGui::GetItemRectMin();
+        ImGui::SetCursorScreenPos(ImVec2(pos.x + 2, pos.y + (selectable_size.y - Icons::ICON_SIZE_SMALL) * 0.5f));
+    
+        // Draw icon
+        ImGui::Image((void*)(intptr_t)folder_icon_texture, ImVec2(Icons::ICON_SIZE_SMALL, Icons::ICON_SIZE_SMALL));
+    
+        // Draw tab name next to icon
+        ImGui::SameLine();
+        ImGui::SetCursorScreenPos(ImVec2(pos.x + Icons::ICON_SIZE_SMALL + 6, pos.y + (selectable_size.y - text_size.y) * 0.5f));
+        ImGui::TextUnformatted(tabs[i].name.c_str());
+    
+        ImGui::PopID();
     }
-
-    if (ImGui::Button("+ Add Tab")) {
-        static int tab_count = 1;
-        tabs.push_back({ "Tab " + std::to_string(tab_count++) });
-        current_tab_index = tabs.size() - 1;
-    }
+    
 
     ImGui::End();
 
     // RIGHT PANE
     ImVec4 original_color = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
+    // 10% darker
     ImVec4 darker_color = ImVec4(
         original_color.x * 0.9f,
         original_color.y * 0.9f,
@@ -185,6 +250,10 @@ void RunAnglerWidgets() {
 
 
 int main() {
+    std::cout << "Home: "     << UserDirectories::Get(UserDir::Home) << "\n";
+    std::cout << "Documents: "<< UserDirectories::Get(UserDir::Documents) << "\n";
+    std::cout << "Desktop: "  << UserDirectories::Get(UserDir::Desktop) << "\n";
+    LoadAnglerTabData();
     // Setup GLFW
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit()) {

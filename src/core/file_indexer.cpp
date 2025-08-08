@@ -107,7 +107,7 @@ namespace FileIndexer {
         return results;
     }
 
-    void SaveToFile(const std::string& filename) {
+    void SaveToFile(const std::string& path, const std::string& filename) {
         std::lock_guard<std::mutex> lock(index_mutex);
         json j = json::array();
 
@@ -117,17 +117,19 @@ namespace FileIndexer {
             j.push_back(f);
         }
 
-        std::ofstream out(filename);
+        std::ofstream out(path + "/." + filename);
         if (out.is_open()) {
             out << j.dump(2);
             out.close();
+            std::cout << "Saved Index to " << path << "/."<< filename << std::endl;
         } else {
             std::cerr << "Failed to save index to " << filename << "\n";
         }
+        
     }
 
-    void LoadFromFile(const std::string& filename) {
-        std::ifstream in(filename);
+    void LoadFromFile(const std::string& path, const std::string& filename) {
+        std::ifstream in(path + "/." + filename);
         if (!in.is_open()) {
             std::cerr << "Failed to load index from " << filename << "\n";
             return;

@@ -82,6 +82,37 @@ bool LoadAnglerTabData(const std::string& filename = "cache.angler") {
     return true;
 }
 
+void ShowFilesInTab(const std::string path) {
+    if (!is_searching && current_tab != nullptr) {
+        is_searching = true;
+        search_ready = false;
+
+        std::string tab_path = current_tab->path;
+        std::string search_query = search_buf;
+
+        results.clear();
+        FileIndexer::LoadFromFile(tab_path,"index");
+        indexing_thread = std::thread([tab_path, search_query]() {
+            std::cout << "Searching in: " << tab_path << " for: " << search_query << std::endl;
+            FileIndexer::StartIndexing(tab_path);
+            while (FileIndexer::IsIndexing()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            results = FileIndexer::Search(search_query);
+            FileIndexer::SaveToFile(tab_path,"index");
+            search_ready = true;
+            is_searching = false;
+        });
+        indexing_thread.detach();
+        
+           search_ready = true;
+        is_searching = false;
+    } else {
+        std::cerr << "Search skipped:" << current_tab << std::endl;
+    }
+}
+
+
 
 
 
@@ -253,14 +284,19 @@ void RunAnglerWidgets() {
         
                 std::string tab_path = current_tab->path;
                 std::string search_query = search_buf;
-        
+                FileIndexer::LoadFromFile(tab_path,"index");
+
                 indexing_thread = std::thread([tab_path, search_query]() {
                     FileIndexer::StartIndexing(tab_path);
+                    results = FileIndexer::Search(search_query);
+                    //TODO: Make this index if the folder isnt already indexed
+                    /*
                     while (FileIndexer::IsIndexing()) {
                         //std::this_thread::sleep_for(std::chrono::milliseconds(100));
                         std::cout << "Searching in: " << tab_path << " for: " << search_query << std::endl;
 
                     }
+                        */
                     results = FileIndexer::Search(search_query);
                     search_ready = true;
                     is_searching = false;
@@ -269,32 +305,10 @@ void RunAnglerWidgets() {
             }
         }
         if (ImGui::Button("Search")) {
-            if (!is_searching && current_tab != nullptr) {
-                is_searching = true;
-                search_ready = false;
-        
-                std::string tab_path = current_tab->path;
-                std::string search_query = search_buf;
-        
-                results.clear();
-        
-                indexing_thread = std::thread([tab_path, search_query]() {
-                    std::cout << "Searching in: " << tab_path << " for: " << search_query << std::endl;
-                    FileIndexer::StartIndexing(tab_path);
-                    while (FileIndexer::IsIndexing()) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                    }
-                    results = FileIndexer::Search(search_query);
-                    search_ready = true;
-                    is_searching = false;
-                });
-                indexing_thread.detach();
-            } else {
-                std::cerr << "Search skipped:" << current_tab << std::endl;
-            }
+    
         }
         
-                
+            
     
         // Progress indicator
         if (is_searching) {

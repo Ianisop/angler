@@ -22,9 +22,9 @@ struct IndexedFile {
 
 namespace FileIndexer {
     void StartIndexing(const std::string& directory);
-    void LoadFromFile(const std::string& path, const std::string& filename);
-    void SaveToFile(const std::string& path, const std::string& filename);
-
+    bool LoadFromFile(const std::string& path);
+    void SaveToFile(const std::string& path);
+    std::vector<IndexedFile> ShowFilesInTab(const std::string& path);
     std::vector<IndexedFile> Search(const std::string& query);
     bool IsIndexing();
     const std::vector<IndexedFile>& GetIndex();

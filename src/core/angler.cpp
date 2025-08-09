@@ -82,35 +82,6 @@ bool LoadAnglerTabData(const std::string& filename = "cache.angler") {
     return true;
 }
 
-void ShowFilesInTab(const std::string path) {
-    if (!is_searching && current_tab != nullptr) {
-        is_searching = true;
-        search_ready = false;
-
-        std::string tab_path = current_tab->path;
-        std::string search_query = search_buf;
-
-        results.clear();
-        FileIndexer::LoadFromFile(tab_path,"index");
-        indexing_thread = std::thread([tab_path, search_query]() {
-            std::cout << "Searching in: " << tab_path << " for: " << search_query << std::endl;
-            FileIndexer::StartIndexing(tab_path);
-            while (FileIndexer::IsIndexing()) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            }
-            results = FileIndexer::Search(search_query);
-            FileIndexer::SaveToFile(tab_path,"index");
-            search_ready = true;
-            is_searching = false;
-        });
-        indexing_thread.detach();
-        
-           search_ready = true;
-        is_searching = false;
-    } else {
-        std::cerr << "Search skipped:" << current_tab << std::endl;
-    }
-}
 
 
 
@@ -122,9 +93,6 @@ void RunAnglerWidgets() {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    // Handle font early on
-    ImFont* font = ImGui::GetIO().Fonts->AddFontFromFileTTF("src/core/assets/karla.ttf",FONT_SIZE);
-    ImGui::PushFont(font);
 
     // Load style
     if (!scale_loaded && !LoadStyleFromScale("my_skin.scale")) {
@@ -232,6 +200,8 @@ void RunAnglerWidgets() {
         if (ImGui::Selectable("", selected, 0, selectable_size)) {
             current_tab_index = i;
             current_tab = &tabs[i];
+            results = FileIndexer::ShowFilesInTab(current_tab->path);
+            search_ready = true;
         }
     
         // Position cursor to draw icon on the left inside the selectable area
@@ -284,7 +254,7 @@ void RunAnglerWidgets() {
         
                 std::string tab_path = current_tab->path;
                 std::string search_query = search_buf;
-                FileIndexer::LoadFromFile(tab_path,"index");
+                FileIndexer::LoadFromFile(tab_path);
 
                 indexing_thread = std::thread([tab_path, search_query]() {
                     FileIndexer::StartIndexing(tab_path);
@@ -385,7 +355,6 @@ void RunAnglerWidgets() {
 
     ImGui::End();
     ImGui::PopStyleColor();
-    ImGui::PopFont();
     // Render
     ImGui::Render();
 }
@@ -440,8 +409,13 @@ int main() {
 
 
     // Initialize ImGui platform/renderer backends
+    ImFont* mainFont = io.Fonts->AddFontFromFileTTF("src/core/assets/karla.ttf", FONT_SIZE);
+    ImGui::PushFont(io.Fonts->Fonts[0]); // or store mainFont in a global
+    // Init backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
+
+    
 
     // Main loop
     while (!glfwWindowShouldClose(window)) {

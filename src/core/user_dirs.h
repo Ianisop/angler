@@ -14,7 +14,8 @@
 enum class UserDir {
     Home,
     Documents,
-    Desktop
+    Desktop,
+    Downloads
 };
 
 namespace UserDirectories {
@@ -46,6 +47,7 @@ namespace UserDirectories {
             case UserDir::Home:     return GetKnownFolder(FOLDERID_Profile);
             case UserDir::Documents:return GetKnownFolder(FOLDERID_Documents);
             case UserDir::Desktop:  return GetKnownFolder(FOLDERID_Desktop);
+            case UserDir::Downloads:  return GetKnownFolder(FOLDERID_Downloads);
         }
     #elif defined(__APPLE__) || defined(__linux__)
         const char* home = std::getenv("HOME");
@@ -58,6 +60,8 @@ namespace UserDirectories {
                 return std::string(home) + "/Documents";
             case UserDir::Desktop:
                 return std::string(home) + "/Desktop";
+            case UserDir::Downloads:
+                return std::string(home) + "/Downloads";
         }
     #endif
         return "";

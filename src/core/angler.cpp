@@ -49,6 +49,7 @@ bool LoadAnglerTabData(const std::string& filename = "cache.angler") {
     if (!infile.is_open()) {
         std::cerr << "Failed to open .angler file, creating one with name: " << filename << std::endl;
         tabs.push_back({"Home", UserDirectories::Get(UserDir::Home)});
+        tabs.push_back({"Downloads", UserDirectories::Get(UserDir::Downloads)});
         tabs.push_back({"Documents", UserDirectories::Get(UserDir::Documents)});
         tabs.push_back({"Desktop", UserDirectories::Get(UserDir::Desktop)});
 
@@ -368,6 +369,7 @@ int main() {
     std::cout << "Home: "     << UserDirectories::Get(UserDir::Home) << "\n";
     std::cout << "Documents: "<< UserDirectories::Get(UserDir::Documents) << "\n";
     std::cout << "Desktop: "  << UserDirectories::Get(UserDir::Desktop) << "\n";
+    std::cout << "Downloads: "<< UserDirectories::Get(UserDir::Downloads) << "\n";
     LoadAnglerTabData();
     // Setup GLFW
     glfwSetErrorCallback(glfw_error_callback);

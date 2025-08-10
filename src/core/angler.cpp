@@ -82,7 +82,9 @@ bool LoadAnglerTabData(const std::string& filename = "cache.angler") {
 
     if (!tabs.empty()) {
         current_tab_index = 0;
+        current_tab = &tabs[current_tab_index]; 
     }
+    
 
     return true;
 }
@@ -100,7 +102,7 @@ void RunAnglerWidgets() {
 
 
     // Load style
-    if (!scale_loaded && !LoadStyleFromScale("my_skin.scale")) {
+    if (!scale_loaded && !LoadStyleFromScale("src/core/assets/my_skin.scale")) {
         printf("Failed to load style\n");
     }
     scale_loaded = true;
@@ -188,7 +190,7 @@ void RunAnglerWidgets() {
                  ImGuiWindowFlags_NoCollapse);
     
     //TODO: move this somewhere so it doesnt get ran all the time
-    auto folder_icon_texture = Icons::FetchIconTextureByType(Icons::FOLDER,16, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL);
+    //auto folder_icon_texture = Icons::FetchIconTextureByType(Icons::FOLDER,16, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL);
     //ImGui::Image((void*)(intptr_t)my_texture, ImVec2(Icons::ICON_SIZE_SMALL, Icons::ICON_SIZE_SMALL));
 
     // Handle tabs
@@ -373,12 +375,13 @@ void LoadIcons() {
 }
 
 int main() {
-    std::cout << "Home: "     << UserDirectories::Get(UserDir::Home) << "\n";
-    std::cout << "Documents: "<< UserDirectories::Get(UserDir::Documents) << "\n";
-    std::cout << "Desktop: "  << UserDirectories::Get(UserDir::Desktop) << "\n";
-    std::cout << "Downloads: "<< UserDirectories::Get(UserDir::Downloads) << "\n";
+    //std::cout << "Home: "     << UserDirectories::Get(UserDir::Home) << "\n";
+    //std::cout << "Documents: "<< UserDirectories::Get(UserDir::Documents) << "\n";
+    //std::cout << "Desktop: "  << UserDirectories::Get(UserDir::Desktop) << "\n";
+    //std::cout << "Downloads: "<< UserDirectories::Get(UserDir::Downloads) << "\n";
+
     LoadAnglerTabData();
-    LoadIcons();
+    std::cout << "Loaded tab data!" << std::endl;
     // Setup GLFW
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit()) {
@@ -394,9 +397,9 @@ int main() {
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // Required on Mac
 #endif
-
+    std::cout << "Creating window!" << std::endl;
     // Create window
-    window = glfwCreateWindow(1280, 720, "Angler ImGui Demo", nullptr, nullptr);
+    window = glfwCreateWindow(1280, 720, "Angler", nullptr, nullptr);
     if (!window) {
         std::cerr << "Failed to create GLFW window\n";
         glfwTerminate();
@@ -404,18 +407,18 @@ int main() {
     }
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); // Enable vsync
-
+    std::cout << "window created!" << std::endl;
     // Initialize GLAD
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::cerr << "Failed to initialize GLAD\n";
         return -1;
     }
-
+    std::cout << "Glad initialized!" << std::endl;
     // Setup Dear ImGui
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
-
+    std::cout << "ImGui Initialized!" << std::endl;
 
 
     // Initialize ImGui platform/renderer backends
@@ -424,8 +427,9 @@ int main() {
     // Init backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
-
-    
+    std::cout << "ImGui backends ready" << std::endl;
+    LoadIcons();
+    std::cout << "icons loaded!" << std::endl;
 
     // Main loop
     while (!glfwWindowShouldClose(window)) {

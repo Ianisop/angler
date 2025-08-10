@@ -17,6 +17,10 @@
 #include <sstream>
 
 
+
+// -- ICONS -- 
+GLuint folder_icon_texture;
+
 // -- GLOBALS --
 GLFWwindow* window;
 int display_w, display_h;
@@ -363,7 +367,10 @@ void RunAnglerWidgets() {
 
 
 
+void LoadIcons() {
+    folder_icon_texture = Icons::FetchIconTextureByType(Icons::FOLDER,Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL);
 
+}
 
 int main() {
     std::cout << "Home: "     << UserDirectories::Get(UserDir::Home) << "\n";
@@ -371,6 +378,7 @@ int main() {
     std::cout << "Desktop: "  << UserDirectories::Get(UserDir::Desktop) << "\n";
     std::cout << "Downloads: "<< UserDirectories::Get(UserDir::Downloads) << "\n";
     LoadAnglerTabData();
+    LoadIcons();
     // Setup GLFW
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit()) {

@@ -1,5 +1,5 @@
 ## how to build:
+use the provided build.sh for linux
 ```
-    $ cmake --build build --target clean-all
-    $ cmake --build build
+    $ ./build.sh
  ```

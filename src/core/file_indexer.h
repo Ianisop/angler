@@ -15,21 +15,32 @@ struct IndexedFile {
     std::string path;
     std::uintmax_t size;
     std::filesystem::file_time_type last_modified;
-    bool is_directory = false;
     std::string extension;
 
-    void to_json(nlohmann::json& j) const;
-    void from_json(const nlohmann::json& j);
+    void to_json(json& j) const;
+    void from_json(const json& j);
 };
 
+struct IndexedDirectory {
+    std::string name;
+    std::string path;
+    std::uintmax_t size;
+    std::filesystem::file_time_type last_modified;
+
+    void to_json(json& j) const;
+    void from_json(const json& j);
+};
 
 namespace FileIndexer {
     void StartIndexing(const std::string& directory);
     bool LoadFromFile(const std::string& path);
     void SaveToFile(const std::string& path);
     std::vector<IndexedFile> ShowFilesInTab(const std::string& path);
-    std::vector<IndexedFile> Search(const std::string& query);
+    std::vector<IndexedFile> SearchFiles(const std::string& query);
+    std::vector<IndexedDirectory> SearchDirectories(const std::string& query);
+    std::tuple<std::vector<IndexedDirectory>, std::vector<IndexedFile>> ShowFilesAndDirsInTab(const std::string& path);
     bool IsIndexing();
-    const std::vector<IndexedFile>& GetIndex();
+    const std::vector<IndexedFile>& GetFileIndex();
+    const std::vector<IndexedDirectory>& GetDirectoryIndex();
     void Shutdown(); 
 }

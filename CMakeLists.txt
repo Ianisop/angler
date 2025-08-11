@@ -4,7 +4,6 @@ project(Angler)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Output directory for binaries
 set(BIN_DIR ${CMAKE_BINARY_DIR}/bin)
 
 # Include directories
@@ -35,30 +34,31 @@ set(IMGUI_SRC
 add_library(imgui STATIC ${IMGUI_SRC})
 
 # -----------------------------------------------------------------------------
-# Find system packages
+# System packages
 # -----------------------------------------------------------------------------
-
 find_package(OpenGL REQUIRED)
-
-# Find GLFW shared (DLL)
 find_package(PkgConfig REQUIRED)
 pkg_search_module(GLFW REQUIRED glfw3)
-
-# Assume GLFW libraries from pkg_search_module includes the DLL
 include_directories(${GLFW_INCLUDE_DIRS})
 
-# Find zstd shared library
 find_library(ZSTD_LIBRARY zstd)
 find_path(ZSTD_INCLUDE_DIR zstd.h)
 include_directories(${ZSTD_INCLUDE_DIR})
 
-# -----------------------------------------------------------------------------
-# Executable
-# -----------------------------------------------------------------------------
 
+
+# -----------------------------------------------------------------------------
+# angler main executable
+# -----------------------------------------------------------------------------
 add_executable(angler
     src/core/angler.cpp
     src/core/file_indexer.cpp
+)
+
+target_include_directories(angler PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+set_target_properties(angler PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${BIN_DIR}
 )
 
 target_link_libraries(angler
@@ -70,15 +70,8 @@ target_link_libraries(angler
 )
 
 # -----------------------------------------------------------------------------
-# Post-build: Copy DLLs to output dir
+# Post-build DLL copy (for Windows)
 # -----------------------------------------------------------------------------
-
-# Set output directory for executable and DLLs
-set_target_properties(angler PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${BIN_DIR}
-)
-
-# Helper function to copy DLLs after build
 function(copy_dll target dll_path)
     add_custom_command(TARGET ${target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -87,13 +80,8 @@ function(copy_dll target dll_path)
     )
 endfunction()
 
-# Example: You need to know exact paths of DLLs to copy
-# You can adjust these to your actual DLL locations
-
-# Copy GLFW DLL
 if (GLFW_FOUND)
-    # pkg_search_module GLFW doesn't give DLL path by default, set manually if needed
-    set(GLFW_DLL "C:/path/to/glfw3.dll") # Change to your actual DLL location
+    set(GLFW_DLL "C:/path/to/glfw3.dll") # Adjust for your system
     if (EXISTS ${GLFW_DLL})
         copy_dll(angler ${GLFW_DLL})
     else()
@@ -101,11 +89,8 @@ if (GLFW_FOUND)
     endif()
 endif()
 
-# Copy zstd DLL
 if (ZSTD_LIBRARY)
-    # Guess DLL path by replacing .lib/.a with .dll or specify manually
-    # On Windows, if you have zstd.dll somewhere:
-    set(ZSTD_DLL "C:/path/to/zstd.dll") # Change this to your actual DLL path
+    set(ZSTD_DLL "C:/path/to/zstd.dll") # Adjust for your system
     if (EXISTS ${ZSTD_DLL})
         copy_dll(angler ${ZSTD_DLL})
     else()

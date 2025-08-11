@@ -64,37 +64,36 @@ namespace FileIndexer {
     }
 
     void IndexDirectory(const std::filesystem::path& directory,
-                        std::vector<IndexedFile>& files_out,
-                        std::vector<IndexedDirectory>& dirs_out) {
+        std::vector<IndexedFile>& files_out,
+        std::vector<IndexedDirectory>& dirs_out) {
         try {
             for (const auto& entry : std::filesystem::directory_iterator(directory)) {
-                if (!indexing) return;
+            if (!indexing) return;
 
-                if (entry.is_directory()) {
-                    IndexedDirectory dir;
-                    dir.name = entry.path().filename().string();
-                    dir.path = entry.path().string();
-                    dir.size = 0; // Optional: could calculate total size if needed
-                    dir.last_modified = entry.last_write_time();
-                    dirs_out.push_back(dir);
+            if (entry.is_directory()) {
+                IndexedDirectory dir;
+                dir.name = entry.path().filename().string();
+                dir.path = entry.path().string();
+                dir.size = 0; // Optional: could calculate total size if needed
+                dir.last_modified = entry.last_write_time();
+                dirs_out.push_back(dir);
 
-                    // Recursive call
-                    IndexDirectory(entry.path(), files_out, dirs_out);
 
-                } else if (entry.is_regular_file()) {
-                    IndexedFile file;
-                    file.name = entry.path().filename().string();
-                    file.path = entry.path().string();
-                    file.size = entry.file_size();
-                    file.extension = entry.path().extension().string();
-                    file.last_modified = entry.last_write_time();
-                    files_out.push_back(file);
-                }
+            } else if (entry.is_regular_file()) {
+                IndexedFile file;
+                file.name = entry.path().filename().string();
+                file.path = entry.path().string();
+                file.size = entry.file_size();
+                file.extension = entry.path().extension().string();
+                file.last_modified = entry.last_write_time();
+                files_out.push_back(file);
             }
+        }
         } catch (const std::exception& e) {
             std::cerr << "Indexing error: " << e.what() << "\n";
         }
     }
+
 
     void IndexAsync(const std::string& root) {
         std::vector<IndexedFile> temp_files;
@@ -182,6 +181,11 @@ namespace FileIndexer {
     void SaveToFile(const std::string& path) {
         std::lock_guard<std::mutex> lock(index_mutex);
 
+        if (file_index.empty() && dir_index.empty()) {
+            std::cerr << "SaveToFile: Skipping save because index is empty.\n";
+            return;
+        }
+
         json j;
         j["files"] = json::array();
         j["dirs"] = json::array();
@@ -233,48 +237,110 @@ namespace FileIndexer {
         outFile.close();
 
         std::cout << "Index saved and compressed to " << fullPath << ".zst\n";
+         // Delete original .index file after compression
+        if (std::remove(fullPath.c_str()) != 0) {
+            std::cerr << "Failed to delete temporary .index file\n";
+        } else {
+            std::cout << "Deleted temporary .index file\n";
+        }
+
     }
 
     bool LoadFromFile(const std::string& path) {
         std::string jsonFilePath = path + "/.index";
-
         std::ifstream in(jsonFilePath, std::ios::binary);
+    
         if (!in.is_open()) {
-            std::cerr << "Failed to open index file " << jsonFilePath << "\n";
-            return false;
+            std::cerr << "Failed to open index file " << jsonFilePath << ", trying compressed version...\n";
+    
+            // Try to decompress .zst
+            std::ifstream zstIn(jsonFilePath + ".zst", std::ios::binary | std::ios::ate);
+            if (!zstIn.is_open()) {
+                std::cerr << "No compressed .zst index found either.\n";
+                return false;
+            }
+    
+            size_t size = zstIn.tellg();
+            zstIn.seekg(0);
+            std::vector<char> compressed(size);
+            zstIn.read(compressed.data(), size);
+    
+            unsigned long long const rSize = ZSTD_getFrameContentSize(compressed.data(), size);
+            if (rSize == ZSTD_CONTENTSIZE_ERROR || rSize == ZSTD_CONTENTSIZE_UNKNOWN) {
+                std::cerr << "Invalid or unknown compressed content size\n";
+                return false;
+            }
+    
+            std::vector<char> decompressed(rSize);
+            size_t dSize = ZSTD_decompress(decompressed.data(), rSize, compressed.data(), size);
+            if (ZSTD_isError(dSize)) {
+                std::cerr << "Decompression failed: " << ZSTD_getErrorName(dSize) << "\n";
+                return false;
+            }
+    
+            // Parse the decompressed string
+            try {
+                json j = json::parse(decompressed.begin(), decompressed.begin() + dSize);
+    
+                std::vector<IndexedFile> temp_files;
+                std::vector<IndexedDirectory> temp_dirs;
+    
+                for (const auto& item : j["files"]) {
+                    IndexedFile f;
+                    f.from_json(item);
+                    temp_files.push_back(std::move(f));
+                }
+                for (const auto& item : j["dirs"]) {
+                    IndexedDirectory d;
+                    d.from_json(item);
+                    temp_dirs.push_back(std::move(d));
+                }
+    
+                std::lock_guard<std::mutex> lock(index_mutex);
+                file_index = std::move(temp_files);
+                dir_index = std::move(temp_dirs);
+    
+                std::cout << "Loaded index from compressed .zst file\n";
+                return true;
+    
+            } catch (const std::exception& e) {
+                std::cerr << "JSON parsing failed after decompression: " << e.what() << "\n";
+                return false;
+            }
         }
-
-        json j;
+    
+        // Continue original load
         try {
+            json j;
             in >> j;
+    
+            std::vector<IndexedFile> temp_files;
+            std::vector<IndexedDirectory> temp_dirs;
+    
+            for (const auto& item : j["files"]) {
+                IndexedFile f;
+                f.from_json(item);
+                temp_files.push_back(std::move(f));
+            }
+            for (const auto& item : j["dirs"]) {
+                IndexedDirectory d;
+                d.from_json(item);
+                temp_dirs.push_back(std::move(d));
+            }
+    
+            std::lock_guard<std::mutex> lock(index_mutex);
+            file_index = std::move(temp_files);
+            dir_index = std::move(temp_dirs);
+    
+            std::cout << "Loaded index from .index\n";
+            return true;
+    
         } catch (const std::exception& e) {
             std::cerr << "JSON parsing error: " << e.what() << "\n";
             return false;
         }
-
-        std::vector<IndexedFile> temp_files;
-        std::vector<IndexedDirectory> temp_dirs;
-
-        for (const auto& item : j["files"]) {
-            IndexedFile f;
-            f.from_json(item);
-            temp_files.push_back(std::move(f));
-        }
-        for (const auto& item : j["dirs"]) {
-            IndexedDirectory d;
-            d.from_json(item);
-            temp_dirs.push_back(std::move(d));
-        }
-
-        {
-            std::lock_guard<std::mutex> lock(index_mutex);
-            file_index = std::move(temp_files);
-            dir_index = std::move(temp_dirs);
-        }
-
-        std::cout << "Loaded index from " << jsonFilePath << "\n";
-        return true;
     }
+    
 
     std::vector<IndexedFile> ShowFilesInTab(const std::string& path) {
         if (LoadFromFile(path)) {

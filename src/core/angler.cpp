@@ -253,6 +253,9 @@ void RunAnglerWidgets() {
             if (ImGui::Button(dirname.c_str())) {
                 std::cout << "Clicked on directory: " << dir.path << std::endl;
                 // TODO: Open directory or switch tab
+
+                std::tie(results_dirs, results_files) = FileIndexer::ShowFilesAndDirsInTab(dir.path);
+                search_ready = true;
             }
             ImGui::PopID();
         }

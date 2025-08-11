@@ -330,33 +330,35 @@ void RunAnglerWidgets() {
                  if (search_ready) {
                     ImGui::SeparatorText("Search Results");
                 
-                    auto file_icon_texture = Icons::FetchIconTextureByType(Icons::DEFAULT, 32, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL);
+                    auto file_icon_texture = Icons::FetchIconTextureByType(Icons::DEFAULT, Icons::ICON_SIZE_MEDIUM, &Icons::ICON_SIZE_MEDIUM, &Icons::ICON_SIZE_MEDIUM);
                 
                     for (size_t i = 0; i < results.size(); ++i) {
                         const auto& file = results[i];
                         ImGui::PushID(static_cast<int>(i));
-                
-                        // Draw file icon
-                        ImGui::Image((void*)(intptr_t)file_icon_texture, ImVec2(Icons::ICON_SIZE_SMALL, Icons::ICON_SIZE_SMALL));
-                
+                    
+                        // Pick icon based on file type
+                        GLuint icon_texture = file.is_directory
+                            ? Icons::FetchIconTextureByType(Icons::FOLDER, Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL)
+                            : Icons::FetchIconTextureByType(Icons::DEFAULT, Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL);
+                    
+                        // Draw icon
+                        ImGui::Image((void*)(intptr_t)icon_texture, ImVec2(Icons::ICON_SIZE_SMALL, Icons::ICON_SIZE_SMALL));
+                    
                         // Same line - draw the button with the file name
                         ImGui::SameLine();
-                
+                    
                         // Extract file name from full path
                         std::string filename;
                         size_t last_slash = file.path.find_last_of("/\\");
-                        if (last_slash != std::string::npos)
-                            filename = file.path.substr(last_slash + 1);
-                        else
-                            filename = file.path;
-                
+                        filename = (last_slash != std::string::npos) ? file.path.substr(last_slash + 1) : file.path;
+                    
                         if (ImGui::Button(filename.c_str())) {
-                            // TODO: open file, or preview, or log
-                            std::cout << "Clicked on file: " << file.path << std::endl;
+                            std::cout << "Clicked on: " << file.path << std::endl;
                         }
-                
+                    
                         ImGui::PopID();
                     }
+                    
                 }
                 
 

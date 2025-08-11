@@ -249,11 +249,10 @@ void RunAnglerWidgets() {
             ImGui::Image((void*)(intptr_t)folder_icon, ImVec2(Icons::ICON_SIZE_SMALL, Icons::ICON_SIZE_SMALL));
             ImGui::SameLine();
 
-            std::string dirname = dir.name;  // You can use dir.path if you want full path
+            std::string dirname = dir.name  + " | " + FileIndexer::HumanReadableSize(dir.size);
             if (ImGui::Button(dirname.c_str())) {
                 std::cout << "Clicked on directory: " << dir.path << std::endl;
                 // TODO: Open directory or switch tab
-
                 std::tie(results_dirs, results_files) = FileIndexer::ShowFilesAndDirsInTab(dir.path);
                 search_ready = true;
             }

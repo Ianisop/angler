@@ -74,7 +74,7 @@ namespace FileIndexer {
                 IndexedDirectory dir;
                 dir.name = entry.path().filename().string();
                 dir.path = entry.path().string();
-                dir.size = 0; // Optional: could calculate total size if needed
+                dir.size = GetDirectorySize(directory);
                 dir.last_modified = entry.last_write_time();
                 dirs_out.push_back(dir);
 
@@ -94,6 +94,24 @@ namespace FileIndexer {
         }
     }
 
+    //TODO: optimise this shit
+    std::uintmax_t GetDirectorySize(const std::filesystem::path& dir) {
+        std::uintmax_t total_size = 0;
+    
+        try {
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
+                if (entry.is_regular_file()) {
+                    total_size += entry.file_size();
+                    //std::cout << total_size << std::endl;
+                }
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Error calculating size for " << dir << ": " << e.what() << '\n';
+        }
+    
+        return total_size;
+    }
+    
 
     void IndexAsync(const std::string& root) {
         std::vector<IndexedFile> temp_files;
@@ -141,6 +159,21 @@ namespace FileIndexer {
         return dir_index;
     }
 
+    std::string HumanReadableSize(std::uintmax_t size) {
+        const char* suffixes[] = { "B", "KB", "MB", "GB", "TB" };
+        int i = 0;
+        double dblSize = static_cast<double>(size);
+    
+        while (dblSize >= 1024 && i < 4) {
+            dblSize /= 1024;
+            ++i;
+        }
+    
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%.2f %s", dblSize, suffixes[i]);
+        return std::string(buf);
+    }
+    
     std::vector<IndexedFile> Search(const std::string& query, bool include_dirs) {
         std::vector<IndexedFile> results;
         std::lock_guard<std::mutex> lock(index_mutex);

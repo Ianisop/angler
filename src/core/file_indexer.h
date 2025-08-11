@@ -15,13 +15,10 @@ struct IndexedFile {
     std::string path;
     std::uintmax_t size;
     std::filesystem::file_time_type last_modified;
-    bool is_directory = false;
-    std::string extension;
 
     void to_json(nlohmann::json& j) const;
     void from_json(const nlohmann::json& j);
 };
-
 
 namespace FileIndexer {
     void StartIndexing(const std::string& directory);

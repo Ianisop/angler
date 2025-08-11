@@ -4,10 +4,9 @@
 #include <algorithm>
 #include <cctype>
 #include <zstd.h>
-#include <future>
-#include <unordered_set>
 
 using json = nlohmann::json;
+
 
 #define COMPRESSION_LEVEL 1
 
@@ -18,8 +17,6 @@ void IndexedFile::to_json(json& j) const {
         {"name", name},
         {"path", path},
         {"size", size},
-        {"is_directory", is_directory},
-        {"extension", extension},
         {"last_modified", std::chrono::duration_cast<std::chrono::seconds>(
             last_modified.time_since_epoch()).count()}
     };
@@ -29,8 +26,6 @@ void IndexedFile::from_json(const json& j) {
     name = j.at("name").get<std::string>();
     path = j.at("path").get<std::string>();
     size = j.at("size").get<std::uintmax_t>();
-    is_directory = j.value("is_directory", false);
-    extension = j.value("extension", "");
     auto secs = j.at("last_modified").get<std::uint64_t>();
     last_modified = std::filesystem::file_time_type(std::chrono::seconds(secs));
 }
@@ -45,69 +40,29 @@ namespace FileIndexer {
         std::mutex index_mutex;
     }
 
-    void IndexDirectoryNonRecursive(const std::filesystem::path& directory, std::vector<IndexedFile>& out, std::vector<std::filesystem::path>& subdirs) {
+    void IndexRecursive(const std::filesystem::path& directory) {
+        std::vector<IndexedFile> temp_index;
+
         try {
-            for (const auto& entry : std::filesystem::directory_iterator(directory)) {
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(directory)) {
                 if (!indexing) break;
 
-                IndexedFile file;
-                file.name = entry.path().filename().string();
-                file.path = entry.path().string();
-                file.last_modified = entry.last_write_time();
-
-                if (entry.is_directory()) {
-                    file.is_directory = true;
-                    file.size = 0;
-                    file.extension = "";
-                    subdirs.push_back(entry.path());
-                } else if (entry.is_regular_file()) {
-                    file.is_directory = false;
+                if (entry.is_regular_file()) {
+                    IndexedFile file;
+                    file.name = entry.path().filename().string();
+                    file.path = entry.path().string();
                     file.size = entry.file_size();
-                    file.extension = entry.path().extension().string();
-                } else {
-                    continue;
+                    file.last_modified = entry.last_write_time();
+                    temp_index.push_back(file);
                 }
-
-                out.push_back(std::move(file));
             }
         } catch (const std::exception& e) {
-            std::cerr << "Directory index error: " << e.what() << "\n";
+            std::cerr << "Indexing error: " << e.what() << "\n";
         }
-    }
 
-    void IndexRecursiveAsync(const std::filesystem::path& directory) {
-        std::vector<IndexedFile> temp_index;
-        std::vector<std::filesystem::path> subdirs;
-
-        IndexDirectoryNonRecursive(directory, temp_index, subdirs);
-
-        // Lock and add top-level files and folders
         {
             std::lock_guard<std::mutex> lock(index_mutex);
-            index.insert(index.end(), temp_index.begin(), temp_index.end());
-        }
-
-        // Launch recursive indexing for subdirectories
-        std::vector<std::future<void>> futures;
-        for (const auto& subdir : subdirs) {
-            futures.push_back(std::async(std::launch::async, [subdir]() {
-                std::vector<IndexedFile> sub_index;
-                std::vector<std::filesystem::path> inner_subdirs;
-                IndexDirectoryNonRecursive(subdir, sub_index, inner_subdirs);
-
-                {
-                    std::lock_guard<std::mutex> lock(index_mutex);
-                    index.insert(index.end(), sub_index.begin(), sub_index.end());
-                }
-
-                // Optionally: recurse further (not done here to avoid deep nesting)
-                // You could queue inner_subdirs back into a thread pool here
-            }));
-        }
-
-        for (auto& f : futures) {
-            if (!indexing) break;
-            f.get();
+            index = std::move(temp_index);
         }
 
         indexing = false;
@@ -122,7 +77,7 @@ namespace FileIndexer {
             index_thread.join();
 
         index_thread = std::thread([directory]() {
-            IndexRecursiveAsync(directory);
+            IndexRecursive(directory);
         });
     }
 

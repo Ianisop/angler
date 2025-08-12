@@ -39,10 +39,11 @@ namespace FileIndexer {
     std::vector<IndexedFile> SearchFiles(const std::string& query);
     std::vector<IndexedDirectory> SearchDirectories(const std::string& query);
     std::tuple<std::vector<IndexedDirectory>, std::vector<IndexedFile>> ShowFilesAndDirsInTab(const std::string& path);
+    std::tuple<std::vector<IndexedDirectory>, std::vector<IndexedFile>> ShowFilesAndDirsContinous(const std::string &path);
     std::uintmax_t GetDirectorySize(const std::filesystem::path& dir);
     std::string HumanReadableSize(std::uintmax_t size);
     bool IsIndexing();
-    const std::vector<IndexedFile>& GetFileIndex();
-    const std::vector<IndexedDirectory>& GetDirectoryIndex();
+    const std::unordered_map<std::string,IndexedFile>& GetFileIndex();
+    const std::unordered_map<std::string,IndexedDirectory>& GetDirectoryIndex();
     void Shutdown(); 
 }

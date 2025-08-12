@@ -7,6 +7,7 @@
 #include <future>
 #include <chrono>
 #include <sys/stat.h>
+#include <unordered_map>
 
 using json = nlohmann::json;
 
@@ -56,8 +57,8 @@ void IndexedDirectory::from_json(const json& j) {
 
 namespace FileIndexer {
     namespace {
-        std::vector<IndexedFile> file_index;
-        std::vector<IndexedDirectory> dir_index;
+        std::unordered_map<std::string, IndexedFile> file_index;
+        std::unordered_map<std::string, IndexedDirectory> dir_index;
 
         std::thread index_thread;
         std::atomic<bool> indexing{false};
@@ -65,32 +66,32 @@ namespace FileIndexer {
     }
 
     void IndexDirectory(const std::filesystem::path& directory,
-        std::vector<IndexedFile>& files_out,
-        std::vector<IndexedDirectory>& dirs_out) {
+        std::unordered_map<std::string, IndexedFile>& files_out,
+        std::unordered_map<std::string, IndexedDirectory>& dirs_out) {
         try {
             for (const auto& entry : std::filesystem::directory_iterator(directory)) {
-            if (!indexing) return;
+                if (!indexing) return;
 
-            if (entry.is_directory()) {
-                IndexedDirectory dir;
-                dir.name = entry.path().filename().string();
-                dir.path = entry.path().string();
-                dir.size = GetDirectorySize(entry.path());
-                dir.last_modified = entry.last_write_time();
-                dirs_out.push_back(dir);
+                if (entry.is_directory()) {
+                    IndexedDirectory dir;
+                    dir.name = entry.path().filename().string();
+                    dir.path = entry.path().string();
+                    dir.size = GetDirectorySize(entry.path());
+                    dir.last_modified = entry.last_write_time();
+                    dirs_out[dir.path + "/" + dir.name] = dir;
 
-
-            } else if (entry.is_regular_file()) {
-                IndexedFile file;
-                file.name = entry.path().filename().string();
-                file.path = entry.path().string();
-                file.size = entry.file_size();
-                file.extension = entry.path().extension().string();
-                file.last_modified = entry.last_write_time();
-                files_out.push_back(file);
+                } else if (entry.is_regular_file()) {
+                    IndexedFile file;
+                    file.name = entry.path().filename().string();
+                    file.path = entry.path().string();
+                    file.size = entry.file_size();
+                    file.extension = entry.path().extension().string();
+                    file.last_modified = entry.last_write_time();
+                    files_out[file.path + "/" + file.name] = file;
+                }
             }
         }
-        } catch (const std::exception& e) {
+        catch (const std::exception& e) {
             std::cerr << "Indexing error: " << e.what() << "\n";
         }
     }
@@ -105,7 +106,7 @@ namespace FileIndexer {
     //TODO: optimise this shit
     std::uintmax_t GetDirectorySize(const std::filesystem::path& dir) {
         std::uintmax_t total_size = 0;
-    
+
         try {
             for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
                 if (entry.is_regular_file()) {
@@ -113,17 +114,18 @@ namespace FileIndexer {
                     //std::cout << total_size << std::endl;
                 }
             }
-        } catch (const std::exception& e) {
+        }
+        catch (const std::exception& e) {
             std::cerr << "Error calculating size for " << dir << ": " << e.what() << '\n';
         }
-    
+
         return total_size;
     }
-    
+
 
     void IndexAsync(const std::string& root) {
-        std::vector<IndexedFile> temp_files;
-        std::vector<IndexedDirectory> temp_dirs;
+        std::unordered_map<std::string, IndexedFile> temp_files;
+        std::unordered_map<std::string, IndexedDirectory> temp_dirs;
 
         IndexDirectory(root, temp_files, temp_dirs);
 
@@ -159,11 +161,11 @@ namespace FileIndexer {
         return indexing;
     }
 
-    const std::vector<IndexedFile>& GetIndex() {
+    const std::unordered_map<std::string, IndexedFile>& GetIndex() {
         return file_index;
     }
 
-    const std::vector<IndexedDirectory>& GetDirectoryIndex() {
+    const std::unordered_map<std::string, IndexedDirectory>& GetDirectoryIndex() {
         return dir_index;
     }
 
@@ -171,17 +173,17 @@ namespace FileIndexer {
         const char* suffixes[] = { "B", "KB", "MB", "GB", "TB" };
         int i = 0;
         double dblSize = static_cast<double>(size);
-    
+
         while (dblSize >= 1024 && i < 4) {
             dblSize /= 1024;
             ++i;
         }
-    
+
         char buf[64];
         std::snprintf(buf, sizeof(buf), "%.2f %s", dblSize, suffixes[i]);
         return std::string(buf);
     }
-    
+
     std::vector<IndexedFile> Search(const std::string& query, bool include_dirs) {
         std::vector<IndexedFile> results;
         std::lock_guard<std::mutex> lock(index_mutex);
@@ -195,14 +197,14 @@ namespace FileIndexer {
 
         std::string lower_query = to_lower(query);
 
-        for (const auto& file : file_index) {
+        for (const auto& [key, file] : file_index) {
             if (to_lower(file.name).find(lower_query) != std::string::npos) {
                 results.push_back(file);
             }
         }
 
         if (include_dirs) {
-            for (const auto& dir : dir_index) {
+            for (const auto& [key, dir] : dir_index) {
                 if (to_lower(dir.name).find(lower_query) != std::string::npos) {
                     // Convert IndexedDirectory to IndexedFile-like for unified return
                     IndexedFile f;
@@ -231,12 +233,12 @@ namespace FileIndexer {
         j["files"] = json::array();
         j["dirs"] = json::array();
 
-        for (const auto& file : file_index) {
+        for (const auto& [key, file] : file_index) {
             json f;
             file.to_json(f);
             j["files"].push_back(f);
         }
-        for (const auto& dir : dir_index) {
+        for (const auto& [key, dir] : dir_index) {
             json d;
             dir.to_json(d);
             j["dirs"].push_back(d);
@@ -278,10 +280,11 @@ namespace FileIndexer {
         outFile.close();
 
         std::cout << "Index saved and compressed to " << fullPath << ".zst\n";
-         // Delete original .index file after compression
+        // Delete original .index file after compression
         if (std::remove(fullPath.c_str()) != 0) {
             std::cerr << "Failed to delete temporary .index file\n";
-        } else {
+        }
+        else {
             std::cout << "Deleted temporary .index file\n";
         }
 
@@ -290,135 +293,101 @@ namespace FileIndexer {
     bool LoadFromFile(const std::string& path) {
         std::string jsonFilePath = path + "/.index";
         std::ifstream in(jsonFilePath, std::ios::binary);
-    
+
         if (!in.is_open()) {
             std::cerr << "Failed to open index file " << jsonFilePath << ", trying compressed version...\n";
-    
+
             // Try to decompress .zst
             std::ifstream zstIn(jsonFilePath + ".zst", std::ios::binary | std::ios::ate);
             if (!zstIn.is_open()) {
                 std::cerr << "No compressed .zst index found either.\n";
                 return false;
             }
-    
+
             size_t size = zstIn.tellg();
             zstIn.seekg(0);
             std::vector<char> compressed(size);
             zstIn.read(compressed.data(), size);
-    
+
             unsigned long long const rSize = ZSTD_getFrameContentSize(compressed.data(), size);
             if (rSize == ZSTD_CONTENTSIZE_ERROR || rSize == ZSTD_CONTENTSIZE_UNKNOWN) {
                 std::cerr << "Invalid or unknown compressed content size\n";
                 return false;
             }
-    
+
             std::vector<char> decompressed(rSize);
             size_t dSize = ZSTD_decompress(decompressed.data(), rSize, compressed.data(), size);
             if (ZSTD_isError(dSize)) {
                 std::cerr << "Decompression failed: " << ZSTD_getErrorName(dSize) << "\n";
                 return false;
             }
-    
+
             // Parse the decompressed string
             try {
                 json j = json::parse(decompressed.begin(), decompressed.begin() + dSize);
-    
-                std::vector<IndexedFile> temp_files;
-                std::vector<IndexedDirectory> temp_dirs;
-    
-                for (const auto& item : j["files"]) {
-                    IndexedFile f;
-                    f.from_json(item);
-                    temp_files.push_back(std::move(f));
+
+                std::unordered_map<std::string, IndexedFile> temp_files;
+                std::unordered_map<std::string, IndexedDirectory> temp_dirs;
+
+                for (const auto& f : j["files"]) {
+                    IndexedFile file;
+                    file.from_json(f);
+                    temp_files[file.path + "/" + file.name] = file;
                 }
-                for (const auto& item : j["dirs"]) {
-                    IndexedDirectory d;
-                    d.from_json(item);
-                    temp_dirs.push_back(std::move(d));
+                for (const auto& d : j["dirs"]) {
+                    IndexedDirectory dir;
+                    dir.from_json(d);
+                    temp_dirs[dir.path + "/" + dir.name] = dir;
                 }
-    
-                std::lock_guard<std::mutex> lock(index_mutex);
-                file_index = std::move(temp_files);
-                dir_index = std::move(temp_dirs);
-    
-                std::cout << "Loaded index from compressed .zst file\n";
+
+                {
+                    std::lock_guard<std::mutex> lock(index_mutex);
+                    file_index = std::move(temp_files);
+                    dir_index = std::move(temp_dirs);
+                }
+                std::cout << "Loaded index from compressed file\n";
                 return true;
-    
-            } catch (const std::exception& e) {
-                std::cerr << "JSON parsing failed after decompression: " << e.what() << "\n";
+            }
+            catch (const std::exception& e) {
+                std::cerr << "Failed to parse JSON from decompressed data: " << e.what() << "\n";
                 return false;
             }
         }
-    
-        // Continue original load
+
+        // If regular file opened successfully:
         try {
             json j;
             in >> j;
-    
-            std::vector<IndexedFile> temp_files;
-            std::vector<IndexedDirectory> temp_dirs;
-    
-            for (const auto& item : j["files"]) {
-                IndexedFile f;
-                f.from_json(item);
-                temp_files.push_back(std::move(f));
+
+            std::unordered_map<std::string, IndexedFile> temp_files;
+            std::unordered_map<std::string, IndexedDirectory> temp_dirs;
+
+            for (const auto& f : j["files"]) {
+                IndexedFile file;
+                file.from_json(f);
+                temp_files[file.path + "/" + file.name] = file;
             }
-            for (const auto& item : j["dirs"]) {
-                IndexedDirectory d;
-                d.from_json(item);
-                temp_dirs.push_back(std::move(d));
+            for (const auto& d : j["dirs"]) {
+                IndexedDirectory dir;
+                dir.from_json(d);
+                temp_dirs[dir.path + "/" + dir.name] = dir;
             }
-    
-            std::lock_guard<std::mutex> lock(index_mutex);
-            file_index = std::move(temp_files);
-            dir_index = std::move(temp_dirs);
-    
-            std::cout << "Loaded index from .index\n";
+
+            {
+                std::lock_guard<std::mutex> lock(index_mutex);
+                file_index = std::move(temp_files);
+                dir_index = std::move(temp_dirs);
+            }
+
+            std::cout << "Loaded index from file\n";
             return true;
-    
-        } catch (const std::exception& e) {
-            std::cerr << "JSON parsing error: " << e.what() << "\n";
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Failed to load index from file: " << e.what() << "\n";
             return false;
         }
     }
-    
 
-    std::vector<IndexedFile> ShowFilesInTab(const std::string& path) {
-        if (LoadFromFile(path)) {
-            return Search("", true);
-        } else {
-            StartIndexing(path);
-
-            // Non-blocking: return empty for now; indexing continues async
-            return {};
-        }
-    }
-
-    std::tuple<std::vector<IndexedDirectory>, std::vector<IndexedFile>> ShowFilesAndDirsInTab(const std::string& path) {
-        if (LoadFromFile(path)) {
-            std::lock_guard<std::mutex> lock(index_mutex);
-            return { dir_index, file_index };
-        } else {
-            // Start indexing synchronously/blocking
-            std::vector<IndexedFile> files;
-            std::vector<IndexedDirectory> dirs;
-    
-            indexing = true;
-            IndexDirectory(path, files, dirs);  // Synchronous indexing
-            {
-                std::lock_guard<std::mutex> lock(index_mutex);
-                file_index = std::move(files);
-                dir_index = std::move(dirs);
-            }
-            indexing = false;
-    
-            SaveToFile(path);  // Optionally save after indexing
-    
-            return { dir_index, file_index };
-        }
-    }
-    
-    
     void Shutdown() {
         indexing = false;
         if (index_thread.joinable()) {

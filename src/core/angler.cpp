@@ -186,7 +186,7 @@ void RunAnglerWidgets() {
             current_tab_index = i;
             current_tab = &tabs[i];
             // Updated search to populate separate vectors for dirs and files
-            std::tie(results_dirs, results_files) = FileIndexer::ShowFilesAndDirsInTab(current_tab->path);
+            std::tie(results_dirs, results_files) = FileIndexer::ShowFilesAndDirsContinous(current_tab->path);
             search_ready = true;
         }
 
@@ -256,7 +256,7 @@ void RunAnglerWidgets() {
             if (ImGui::Button(dirname.c_str())) {
                 
                 // TODO: Open directory or switch tab
-                std::tie(results_dirs, results_files) = FileIndexer::ShowFilesAndDirsInTab(dir.path);
+                std::tie(results_dirs, results_files) = FileIndexer::ShowFilesAndDirsContinous(dir.path);
                 search_ready = true;
             }
             ImGui::PopID();

@@ -1,8 +1,9 @@
 cmake_minimum_required(VERSION 3.14)
-project(Angler)
+project(Angler LANGUAGES C CXX ASM)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 enable_language(ASM)
 
 set(BIN_DIR ${CMAKE_BINARY_DIR}/bin)
@@ -28,9 +29,10 @@ set(IMGUI_SRC
 )
 add_library(imgui STATIC ${IMGUI_SRC})
 target_include_directories(imgui PUBLIC src/lib/imgui)
+target_link_libraries(imgui PUBLIC glfw)  # Link to GLFW for imgui_impl_glfw
 
 # -----------------------------------------------------------------------------
-# Zstd library
+# Zstd library (compile from sources)
 # -----------------------------------------------------------------------------
 file(GLOB_RECURSE ZSTD_C_SOURCES
     src/lib/zstd/*.c
@@ -73,20 +75,21 @@ add_executable(angler
 
 target_include_directories(angler PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-    src/lib/zstd/
-    external/
+    src/lib/zstd
+    external
 )
 
 target_link_libraries(angler
     glad
     imgui
-    glfw           # <- from vendored GLFW
+    glfw           # From vendored GLFW
     OpenGL::GL
     zstd
 )
 
+# On Windows with MSVC, opengl32 is usually included by OpenGL::GL, so this is optional:
 if (WIN32 AND MSVC)
-    target_link_libraries(angler opengl32)
+    target_link_libraries(angler PRIVATE opengl32)
 endif()
 
 set_target_properties(angler PROPERTIES
@@ -102,3 +105,12 @@ add_custom_command(TARGET angler POST_BUILD
         ${BIN_DIR}/assets
     COMMENT "Copying assets to build directory"
 )
+
+# -----------------------------------------------------------------------------
+# Optional: Enable warnings (recommended)
+# -----------------------------------------------------------------------------
+if (MSVC)
+    target_compile_options(angler PRIVATE /W4 /WX)
+else()
+    target_compile_options(angler PRIVATE -Wall -Wextra -Werror)
+endif()

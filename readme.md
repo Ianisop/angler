@@ -10,7 +10,7 @@ $ ./build.sh
 #### Setup the enviroment
 open MSYS2 MINGW64 and get the required packages:
 ```
-$ pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja
+$ pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja git
 ```
 clone angler
 ```

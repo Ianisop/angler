@@ -3,25 +3,20 @@ project(Angler)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+enable_language(ASM)
 
 set(BIN_DIR ${CMAKE_BINARY_DIR}/bin)
 
-# Include directories
-include_directories(
-    src/lib/glad
-    src/lib/imgui
-    external/
-)
-
 # -----------------------------------------------------------------------------
-# GLAD
+# GLAD library
 # -----------------------------------------------------------------------------
 add_library(glad STATIC
     src/lib/glad/glad.c
 )
+target_include_directories(glad PUBLIC src/lib/glad)
 
 # -----------------------------------------------------------------------------
-# ImGui
+# ImGui library
 # -----------------------------------------------------------------------------
 set(IMGUI_SRC
     src/lib/imgui/imgui.cpp
@@ -32,33 +27,46 @@ set(IMGUI_SRC
     src/lib/imgui/imgui_impl_opengl3.cpp
 )
 add_library(imgui STATIC ${IMGUI_SRC})
+target_include_directories(imgui PUBLIC src/lib/imgui)
 
 # -----------------------------------------------------------------------------
-# System packages
+# Zstd library (compile from sources)
+# -----------------------------------------------------------------------------
+file(GLOB_RECURSE ZSTD_C_SOURCES
+    src/lib/zstd/*.c
+)
+
+set(ZSTD_ASM_SOURCES
+    src/lib/zstd/decompress/huf_decompress_amd64.S
+)
+
+add_library(zstd STATIC ${ZSTD_C_SOURCES} ${ZSTD_ASM_SOURCES})
+
+target_include_directories(zstd PUBLIC src/lib/zstd/include)
+
+# Optional: specify CPU-enabled flags
+#target_compile_options(zstd PUBLIC -msse2 -mavx2)
+
+
+# -----------------------------------------------------------------------------
+# Find system libraries
 # -----------------------------------------------------------------------------
 find_package(OpenGL REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_search_module(GLFW REQUIRED glfw3)
-include_directories(${GLFW_INCLUDE_DIRS})
-
-find_library(ZSTD_LIBRARY zstd)
-find_path(ZSTD_INCLUDE_DIR zstd.h)
-include_directories(${ZSTD_INCLUDE_DIR})
-
-
 
 # -----------------------------------------------------------------------------
-# angler main executable
+# Main executable
 # -----------------------------------------------------------------------------
 add_executable(angler
     src/core/angler.cpp
     src/core/file_indexer.cpp
 )
 
-target_include_directories(angler PRIVATE ${CMAKE_SOURCE_DIR}/src)
-
-set_target_properties(angler PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${BIN_DIR}
+target_include_directories(angler PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    src/lib/zstd/
+    external/
 )
 
 target_link_libraries(angler
@@ -66,7 +74,11 @@ target_link_libraries(angler
     imgui
     ${GLFW_LIBRARIES}
     OpenGL::GL
-    ${ZSTD_LIBRARY}
+    zstd
+)
+
+set_target_properties(angler PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${BIN_DIR}
 )
 
 # -----------------------------------------------------------------------------
@@ -81,7 +93,7 @@ function(copy_dll target dll_path)
 endfunction()
 
 if (GLFW_FOUND)
-    set(GLFW_DLL "C:/path/to/glfw3.dll") # Adjust for your system
+    set(GLFW_DLL "C:/path/to/glfw3.dll") # Adjust this path to your system if needed
     if (EXISTS ${GLFW_DLL})
         copy_dll(angler ${GLFW_DLL})
     else()
@@ -89,11 +101,20 @@ if (GLFW_FOUND)
     endif()
 endif()
 
-if (ZSTD_LIBRARY)
-    set(ZSTD_DLL "C:/path/to/zstd.dll") # Adjust for your system
+# You likely won't need these unless you build zstd as shared
+if (FALSE)
+    set(ZSTD_DLL "C:/path/to/zstd.dll") # Adjust path if needed
     if (EXISTS ${ZSTD_DLL})
         copy_dll(angler ${ZSTD_DLL})
     else()
         message(WARNING "ZSTD DLL not found: ${ZSTD_DLL}, skipping copy.")
     endif()
 endif()
+
+
+add_custom_command(TARGET angler POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/src/core/assets
+        ${BIN_DIR}/assets
+    COMMENT "Copying assets to build directory"
+)

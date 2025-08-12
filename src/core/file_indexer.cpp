@@ -6,6 +6,7 @@
 #include <zstd.h>
 #include <future>
 #include <chrono>
+#include <sys/stat.h>
 
 using json = nlohmann::json;
 
@@ -74,7 +75,7 @@ namespace FileIndexer {
                 IndexedDirectory dir;
                 dir.name = entry.path().filename().string();
                 dir.path = entry.path().string();
-                dir.size = GetDirectorySize(directory);
+                dir.size = GetDirectorySize(entry.path());
                 dir.last_modified = entry.last_write_time();
                 dirs_out.push_back(dir);
 
@@ -92,6 +93,13 @@ namespace FileIndexer {
         } catch (const std::exception& e) {
             std::cerr << "Indexing error: " << e.what() << "\n";
         }
+    }
+
+    long GetFileSize(std::string filename)
+    {
+        struct stat stat_buf;
+        int rc = stat(filename.c_str(), &stat_buf);
+        return rc == 0 ? stat_buf.st_size : -1;
     }
 
     //TODO: optimise this shit
@@ -397,7 +405,6 @@ namespace FileIndexer {
     
             indexing = true;
             IndexDirectory(path, files, dirs);  // Synchronous indexing
-    
             {
                 std::lock_guard<std::mutex> lock(index_mutex);
                 file_index = std::move(files);

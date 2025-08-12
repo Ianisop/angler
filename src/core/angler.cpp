@@ -15,6 +15,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <boost/lexical_cast.hpp>
 
 
 
@@ -249,9 +250,11 @@ void RunAnglerWidgets() {
             ImGui::Image((void*)(intptr_t)folder_icon, ImVec2(Icons::ICON_SIZE_SMALL, Icons::ICON_SIZE_SMALL));
             ImGui::SameLine();
 
-            std::string dirname = dir.name  + " | " + FileIndexer::HumanReadableSize(dir.size);
+            std::string size_in_human_format = FileIndexer::HumanReadableSize(dir.size);
+            //std::cout << "Clicked on directory: " << dir.path << " | " << "(" << dir.size << " , " << size_in_human_format << ")" << std::endl;
+            std::string dirname = dir.name  + " | " + size_in_human_format;
             if (ImGui::Button(dirname.c_str())) {
-                std::cout << "Clicked on directory: " << dir.path << std::endl;
+                
                 // TODO: Open directory or switch tab
                 std::tie(results_dirs, results_files) = FileIndexer::ShowFilesAndDirsInTab(dir.path);
                 search_ready = true;
@@ -268,7 +271,7 @@ void RunAnglerWidgets() {
             ImGui::Image((void*)(intptr_t)file_icon, ImVec2(Icons::ICON_SIZE_SMALL, Icons::ICON_SIZE_SMALL));
             ImGui::SameLine();
 
-            std::string filename = file.name;
+            std::string filename = file.name + " | " + FileIndexer::HumanReadableSize(file.size);
             if (ImGui::Button(filename.c_str())) {
                 std::cout << "Clicked on file: " << file.path << std::endl;
                 // TODO: Open file or preview

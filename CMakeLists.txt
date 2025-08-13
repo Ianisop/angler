@@ -30,30 +30,38 @@ add_library(imgui STATIC ${IMGUI_SRC})
 target_include_directories(imgui PUBLIC src/lib/imgui)
 
 # -----------------------------------------------------------------------------
-# Zstd library (compile from sources)
+# Zstd library
 # -----------------------------------------------------------------------------
 file(GLOB_RECURSE ZSTD_C_SOURCES
     src/lib/zstd/*.c
 )
 
-set(ZSTD_ASM_SOURCES
-    src/lib/zstd/decompress/huf_decompress_amd64.S
-)
+set(ZSTD_ASM_SOURCES "")
+if (NOT MSVC) # MSVC can't handle .S assembly files
+    set(ZSTD_ASM_SOURCES
+        src/lib/zstd/decompress/huf_decompress_amd64.S
+    )
+else()
+    message(WARNING "Skipping Zstd ASM optimizations on MSVC")
+endif()
 
 add_library(zstd STATIC ${ZSTD_C_SOURCES} ${ZSTD_ASM_SOURCES})
-
 target_include_directories(zstd PUBLIC src/lib/zstd/include)
 
-# Optional: specify CPU-enabled flags
-#target_compile_options(zstd PUBLIC -msse2 -mavx2)
+# -----------------------------------------------------------------------------
+# GLFW 
+# -----------------------------------------------------------------------------
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
 
+add_subdirectory(src/lib/glfw)
 
 # -----------------------------------------------------------------------------
-# Find system libraries
+# Find OpenGL
 # -----------------------------------------------------------------------------
 find_package(OpenGL REQUIRED)
-find_package(PkgConfig REQUIRED)
-pkg_search_module(GLFW REQUIRED glfw3)
 
 # -----------------------------------------------------------------------------
 # Main executable
@@ -72,46 +80,22 @@ target_include_directories(angler PRIVATE
 target_link_libraries(angler
     glad
     imgui
-    ${GLFW_LIBRARIES}
+    glfw           
     OpenGL::GL
     zstd
 )
+
+if (WIN32 AND MSVC)
+    target_link_libraries(angler opengl32)
+endif()
 
 set_target_properties(angler PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${BIN_DIR}
 )
 
 # -----------------------------------------------------------------------------
-# Post-build DLL copy (for Windows)
+# Post-build: Copy assets
 # -----------------------------------------------------------------------------
-function(copy_dll target dll_path)
-    add_custom_command(TARGET ${target} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${dll_path}"
-        "$<TARGET_FILE_DIR:${target}>"
-    )
-endfunction()
-
-if (GLFW_FOUND)
-    set(GLFW_DLL "C:/path/to/glfw3.dll") # Adjust this path to your system if needed
-    if (EXISTS ${GLFW_DLL})
-        copy_dll(angler ${GLFW_DLL})
-    else()
-        message(WARNING "GLFW DLL not found: ${GLFW_DLL}, skipping copy.")
-    endif()
-endif()
-
-# You likely won't need these unless you build zstd as shared
-if (FALSE)
-    set(ZSTD_DLL "C:/path/to/zstd.dll") # Adjust path if needed
-    if (EXISTS ${ZSTD_DLL})
-        copy_dll(angler ${ZSTD_DLL})
-    else()
-        message(WARNING "ZSTD DLL not found: ${ZSTD_DLL}, skipping copy.")
-    endif()
-endif()
-
-
 add_custom_command(TARGET angler POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/src/core/assets

@@ -388,6 +388,34 @@ namespace FileIndexer {
         }
     }
 
+
+    std::tuple<std::vector<IndexedDirectory>, std::vector<IndexedFile>> ShowFilesAndDirsContinous(const std::string &path) {
+        std::vector<IndexedDirectory> dirs;
+        std::vector<IndexedFile> files;
+
+        if (path.empty()) {
+            std::cerr << "ShowFilesAndDirsContinous: Empty path provided.\n";
+            return {dirs, files};
+        }
+
+        std::lock_guard<std::mutex> lock(index_mutex);
+
+        for (const auto& [key, dir] : dir_index) {
+            if (dir.path == path || dir.path == path + "/") {
+                dirs.push_back(dir);
+            }
+        }
+
+        for (const auto& [key, file] : file_index) {
+            if (file.path.find(path) == 0) { // Check if file is in the directory
+                files.push_back(file);
+            }
+        }
+
+        return {dirs, files};
+    }
+
+
     void Shutdown() {
         indexing = false;
         if (index_thread.joinable()) {

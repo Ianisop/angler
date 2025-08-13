@@ -15,7 +15,6 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <boost/lexical_cast.hpp>
 
 
 
@@ -24,6 +23,7 @@ GLuint folder_icon_texture;
 
 // -- GLOBALS --
 GLFWwindow* window;
+static int platform;
 int display_w, display_h;
 static bool dragging = false;
 static ImVec2 drag_offset;
@@ -122,25 +122,28 @@ void RunAnglerWidgets() {
                                      ImGuiWindowFlags_NoSavedSettings |
                                      ImGuiWindowFlags_NoBringToFrontOnFocus;
     ImGui::Begin("Angler", nullptr, toolbar_flags);
+    if(platform != GLFW_PLATFORM_WAYLAND) {
+        // Drag to move window
+        ImGuiIO& io = ImGui::GetIO();
+        ImVec2 toolbar_pos = ImGui::GetWindowPos();
+        ImVec2 toolbar_size = ImGui::GetWindowSize();
+        ImVec2 mouse_pos = io.MousePos;
+        bool mouse_in_toolbar = mouse_pos.x >= toolbar_pos.x && mouse_pos.x <= (toolbar_pos.x + toolbar_size.x) &&
+                                mouse_pos.y >= toolbar_pos.y && mouse_pos.y <= (toolbar_pos.y + toolbar_size.y);
 
-    // Drag to move window
-    ImGuiIO& io = ImGui::GetIO();
-    ImVec2 toolbar_pos = ImGui::GetWindowPos();
-    ImVec2 toolbar_size = ImGui::GetWindowSize();
-    ImVec2 mouse_pos = io.MousePos;
-    bool mouse_in_toolbar = mouse_pos.x >= toolbar_pos.x && mouse_pos.x <= (toolbar_pos.x + toolbar_size.x) &&
-                            mouse_pos.y >= toolbar_pos.y && mouse_pos.y <= (toolbar_pos.y + toolbar_size.y);
-
-    if (!dragging && mouse_in_toolbar && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-        dragging = true;
-    if (dragging && !ImGui::IsMouseDown(ImGuiMouseButton_Left))
-        dragging = false;
-    if (dragging) {
-        ImVec2 delta = io.MouseDelta;
-        int wx, wy;
-        glfwGetWindowPos(window, &wx, &wy);
-        glfwSetWindowPos(window, wx + (int)delta.x, wy + (int)delta.y);
+        if (!dragging && mouse_in_toolbar && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+            dragging = true;
+            if (dragging && !ImGui::IsMouseDown(ImGuiMouseButton_Left))
+                dragging = false;
+            if (dragging) {
+                ImVec2 delta = io.MouseDelta;
+                int wx, wy;
+                glfwGetWindowPos(window, &wx, &wy);
+                glfwSetWindowPos(window, wx + (int)delta.x, wy + (int)delta.y);
+            }
+        }
     }
+
 
     ImGui::SameLine(ImGui::GetWindowWidth() / 2);
 
@@ -347,6 +350,7 @@ int main() {
     // Init backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
+    platform = glfwGetPlatform();
     std::cout << "ImGui backends ready" << std::endl;
     LoadIcons();
     std::cout << "icons loaded!" << std::endl;

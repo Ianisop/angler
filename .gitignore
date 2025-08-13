@@ -62,3 +62,6 @@ build/
 #cmake-build-*
 
 build/
+.cache/
+imgui.ini
+.vscode

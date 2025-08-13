@@ -4,16 +4,25 @@
 #include <algorithm>
 #include <cctype>
 #include <zstd.h>
-#include <future>
 #include <chrono>
 #include <sys/stat.h>
 #include <unordered_map>
 #include <chrono>
+#include "scoped_timer.h"
+
+
 
 using json = nlohmann::json;
 
 #define COMPRESSION_LEVEL 1
-#define DEBUG_MESURE_TIMES 1
+#define DEBUG_MEASURE_TIMES 1 // Set to 1 to enable timing debug messages
+
+#ifdef DEBUG_MEASURE_TIMES 
+#define MEASURE_TIME(label) ScopedTimer timer__(label)
+#else
+#define MEASURE_TIME(label)
+#endif
+
 
 // ---------------- JSON Serialization ----------------
 
@@ -59,62 +68,73 @@ void IndexedDirectory::from_json(const json& j) {
 
 namespace FileIndexer {
     namespace {
-        std::unordered_map<std::string, IndexedFile> file_index;
-        std::unordered_map<std::string, IndexedDirectory> dir_index;
+        std::unordered_map<std::filesystem::path, IndexedFile> file_index;
+        std::unordered_map<std::filesystem::path, IndexedDirectory> dir_index;
 
         std::thread index_thread;
         std::atomic<bool> indexing{false};
         std::mutex index_mutex;
     }
 
-    void IndexDirectory(const std::filesystem::path& directory,
-        std::unordered_map<std::string, IndexedFile>& files_out,
-        std::unordered_map<std::string, IndexedDirectory>& dirs_out) {
-#if DEBUG_MESURE_TIMES
-        std::chrono::steady_clock::time_point clock_begin = std::chrono::steady_clock::now();
-#endif  
-        int files_count = 0;
-        int dirs_count = 0;
-        try {
-            for (const auto& entry : std::filesystem::directory_iterator(directory)) {
-                if (!indexing) return;
+    void IndexDirectory(
+        const std::filesystem::path& directory,
+        std::unordered_map<std::filesystem::path, IndexedFile>& files_out,
+        std::unordered_map<std::filesystem::path, IndexedDirectory>& dirs_out
+    ) {
+        MEASURE_TIME("IndexDirectory");
 
-                if (entry.is_directory()) {
-                    IndexedDirectory dir;
-                    dir.name = entry.path().filename().string();
-                    dir.path = entry.path().string();
-                    dir.size = GetDirectorySize(entry.path());
-                    dir.last_modified = entry.last_write_time();
-                    dirs_out[dir.path] = dir;
-                    dirs_count++;
+        std::error_code ec;
+        std::filesystem::directory_iterator it(directory, std::filesystem::directory_options::skip_permission_denied, ec);
 
-                } else if (entry.is_regular_file()) {
-                    IndexedFile file;
-                    file.name = entry.path().filename().string();
-                    file.path = entry.path().string();
-                    file.size = entry.file_size();
-                    file.extension = entry.path().extension().string();
-                    file.last_modified = entry.last_write_time();
-                    files_out[file.path] = file;
-                    files_count++;
-                }
+        if (ec) {
+            std::cerr << "Error opening directory: " << directory << " - " << ec.message() << "\n";
+            return;
+        }
+        //move current index into temp
+        {
+            std::lock_guard<std::mutex> lock(index_mutex);
+            files_out = file_index; 
+            dirs_out = dir_index;   
+        }
+        for (const auto& entry : it) {
+            if (!indexing) return;
+
+            const std::filesystem::path& path = entry.path();
+            if (files_out.find(entry.path()) != files_out.end() ||
+                dirs_out.find(entry.path()) != dirs_out.end()) {
+                continue; // Skip already processed entries in this run
+            }
+
+
+            ec.clear();
+
+            if (entry.is_directory(ec) && !ec) {
+                IndexedDirectory dir;
+                dir.name = path.filename().string();
+                dir.path = path;
+                dir.size = GetDirectorySize(path);  // still recursive, possibly slow
+                dir.last_modified = std::filesystem::last_write_time(path, ec);
+
+                if (!ec)
+                    dirs_out[path] = std::move(dir);
+
+            } else if (entry.is_regular_file(ec) && !ec) {
+                IndexedFile file;
+                file.name = path.filename().string();
+                file.path = path;
+                file.size = std::filesystem::file_size(path, ec);
+                file.extension = path.extension().string();
+                file.last_modified = std::filesystem::last_write_time(path, ec);
+
+                if (!ec)
+                    files_out[path] = std::move(file);
             }
         }
-        catch (const std::exception& e) {
-            std::cerr << "Indexing error: " << e.what() << "\n";
-        }
+
         indexing = false;
-        //std::cout << "Indexed " << files_count << " files and " << dirs_count << " directories in " << directory << "\n";
-#if DEBUG_MESURE_TIMES
-        std::chrono::steady_clock::time_point clock_end = std::chrono::steady_clock::now();
-
-        std::chrono::steady_clock::duration time_span = clock_end - clock_begin;
-
-        double nseconds = double(time_span.count()) * std::chrono::steady_clock::period::num / std::chrono::steady_clock::period::den;
-
-        std::cout << "It took me " << nseconds << " seconds.\n";
-#endif
     }
+
+
 
     long GetFileSize(std::string filename)
     {
@@ -128,14 +148,15 @@ namespace FileIndexer {
         std::uintmax_t total_size = 0;
 
         try {
-            for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
-                if (entry.is_regular_file()) {
-                    total_size += entry.file_size();
-                    //std::cout << total_size << std::endl;
-                }
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(dir,
+                    std::filesystem::directory_options::skip_permission_denied)) {
+
+                if (!entry.is_regular_file()) continue;
+
+                std::error_code ec;
+                total_size += entry.file_size(ec); // Non-throwing overload
             }
-        }
-        catch (const std::exception& e) {
+        } catch (const std::exception& e) {
             std::cerr << "Error calculating size for " << dir << ": " << e.what() << '\n';
         }
 
@@ -143,9 +164,10 @@ namespace FileIndexer {
     }
 
 
+
     void IndexAsync(const std::string& root) {
-        std::unordered_map<std::string, IndexedFile> temp_files;
-        std::unordered_map<std::string, IndexedDirectory> temp_dirs;
+        std::unordered_map<std::filesystem::path, IndexedFile> temp_files;
+        std::unordered_map<std::filesystem::path, IndexedDirectory> temp_dirs;
 
         IndexDirectory(root, temp_files, temp_dirs);
 
@@ -181,13 +203,6 @@ namespace FileIndexer {
         return indexing;
     }
 
-    const std::unordered_map<std::string, IndexedFile>& GetIndex() {
-        return file_index;
-    }
-
-    const std::unordered_map<std::string, IndexedDirectory>& GetDirectoryIndex() {
-        return dir_index;
-    }
 
     std::string HumanReadableSize(std::uintmax_t size) {
         const char* suffixes[] = { "B", "KB", "MB", "GB", "TB" };
@@ -346,18 +361,18 @@ namespace FileIndexer {
             try {
                 json j = json::parse(decompressed.begin(), decompressed.begin() + dSize);
 
-                std::unordered_map<std::string, IndexedFile> temp_files;
-                std::unordered_map<std::string, IndexedDirectory> temp_dirs;
+                std::unordered_map<std::filesystem::path, IndexedFile> temp_files;
+                std::unordered_map<std::filesystem::path, IndexedDirectory> temp_dirs;
 
                 for (const auto& f : j["files"]) {
                     IndexedFile file;
                     file.from_json(f);
-                    temp_files[file.path + "/" + file.name] = file;
+                    temp_files[file.path] = file;
                 }
                 for (const auto& d : j["dirs"]) {
                     IndexedDirectory dir;
                     dir.from_json(d);
-                    temp_dirs[dir.path + "/" + dir.name] = dir;
+                    temp_dirs[dir.path] = dir;
                 }
 
                 {
@@ -379,18 +394,18 @@ namespace FileIndexer {
             json j;
             in >> j;
 
-            std::unordered_map<std::string, IndexedFile> temp_files;
-            std::unordered_map<std::string, IndexedDirectory> temp_dirs;
+            std::unordered_map<std::filesystem::path, IndexedFile> temp_files;
+            std::unordered_map<std::filesystem::path, IndexedDirectory> temp_dirs;
 
             for (const auto& f : j["files"]) {
                 IndexedFile file;
                 file.from_json(f);
-                temp_files[file.path + "/" + file.name] = file;
+                temp_files[file.path] = file;
             }
             for (const auto& d : j["dirs"]) {
                 IndexedDirectory dir;
                 dir.from_json(d);
-                temp_dirs[dir.path + "/" + dir.name] = dir;
+                temp_dirs[dir.path] = dir;
             }
 
             {
@@ -409,13 +424,14 @@ namespace FileIndexer {
     }
 
 
-    std::tuple<std::unordered_map<std::string, IndexedDirectory>, std::unordered_map<std::string, IndexedFile>> ShowFilesAndDirsContinous(const std::string& path) {
+    //TODO: make this only index changes that arent present in the .index file
+    std::tuple<std::unordered_map<std::filesystem::path, IndexedDirectory>, std::unordered_map<std::filesystem::path, IndexedFile>> ShowFilesAndDirsContinous(const std::string& path) {
         indexing = true;
 
         LoadFromFile(path); // load from saved .index if exists
 
-        std::unordered_map<std::string, IndexedFile> files;
-        std::unordered_map<std::string, IndexedDirectory> dirs;
+        std::unordered_map<std::filesystem::path, IndexedFile> files;
+        std::unordered_map<std::filesystem::path, IndexedDirectory> dirs;
 
         IndexDirectory(path, files, dirs);  // Synchronous indexing
         //std::cout << "ShowFilesAndDirsContinous: Indexed " << files.size() << " files and " << dirs.size() << " directories in " << path << "\n";

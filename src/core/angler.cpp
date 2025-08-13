@@ -16,7 +16,6 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
-#include <sstream>
 
 
 
@@ -32,8 +31,8 @@ static ImVec2 drag_offset;
 int FONT_SIZE = 18; // global font size
 bool scale_loaded = false; // tracks if a theme has been loaded
 static char search_buf[256] = "";      // Input buffer for search query
-static std::unordered_map<std::string, IndexedFile> results_files;
-static std::unordered_map<std::string,IndexedDirectory> results_dirs;
+static std::unordered_map<std::filesystem::path, IndexedFile> results_files;
+static std::unordered_map<std::filesystem::path,IndexedDirectory> results_dirs;
 bool show_search_input = false;
 bool is_searching = false;
 bool search_ready = false;

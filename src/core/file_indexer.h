@@ -12,7 +12,7 @@ using json = nlohmann::json;
 
 struct IndexedFile {
     std::string name;
-    std::string path;
+    std::filesystem::path path;
     std::uintmax_t size;
     std::filesystem::file_time_type last_modified;
     std::string extension;
@@ -23,7 +23,7 @@ struct IndexedFile {
 
 struct IndexedDirectory {
     std::string name;
-    std::string path;
+    std::filesystem::path path;
     std::uintmax_t size;
     std::filesystem::file_time_type last_modified;
 
@@ -39,8 +39,7 @@ namespace FileIndexer {
     std::vector<IndexedFile> SearchFiles(const std::string& query);
     std::vector<IndexedDirectory> SearchDirectories(const std::string& query);
     std::tuple<std::vector<IndexedDirectory>, std::vector<IndexedFile>> ShowFilesAndDirsInTab(const std::string& path);
-    std::tuple<std::unordered_map<std::string,IndexedDirectory>, std::unordered_map<std::string,IndexedFile>> ShowFilesAndDirsContinous(const std::string &path);
-    std::uintmax_t GetDirectorySize(const std::filesystem::path& dir);
+    std::tuple<std::unordered_map<std::filesystem::path, IndexedDirectory>, std::unordered_map<std::filesystem::path, IndexedFile>> ShowFilesAndDirsContinous(const std::string& path);    std::uintmax_t GetDirectorySize(const std::filesystem::path& dir);
     std::string HumanReadableSize(std::uintmax_t size);
     bool IsIndexing();
     const std::unordered_map<std::string,IndexedFile>& GetFileIndex();

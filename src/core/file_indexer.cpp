@@ -68,6 +68,8 @@ namespace FileIndexer {
     void IndexDirectory(const std::filesystem::path& directory,
         std::unordered_map<std::string, IndexedFile>& files_out,
         std::unordered_map<std::string, IndexedDirectory>& dirs_out) {
+        int files_count = 0;
+        int dirs_count = 0;
         try {
             for (const auto& entry : std::filesystem::directory_iterator(directory)) {
                 if (!indexing) return;
@@ -78,7 +80,8 @@ namespace FileIndexer {
                     dir.path = entry.path().string();
                     dir.size = GetDirectorySize(entry.path());
                     dir.last_modified = entry.last_write_time();
-                    dirs_out[dir.path + "/" + dir.name] = dir;
+                    dirs_out[dir.path] = dir;
+                    dirs_count++;
 
                 } else if (entry.is_regular_file()) {
                     IndexedFile file;
@@ -87,13 +90,16 @@ namespace FileIndexer {
                     file.size = entry.file_size();
                     file.extension = entry.path().extension().string();
                     file.last_modified = entry.last_write_time();
-                    files_out[file.path + "/" + file.name] = file;
+                    files_out[file.path] = file;
+                    files_count++;
                 }
             }
         }
         catch (const std::exception& e) {
             std::cerr << "Indexing error: " << e.what() << "\n";
         }
+        indexing = false;
+        std::cout << "Indexed " << files_count << " files and " << dirs_count << " directories in " << directory << "\n";
     }
 
     long GetFileSize(std::string filename)
@@ -389,31 +395,30 @@ namespace FileIndexer {
     }
 
 
-    std::tuple<std::vector<IndexedDirectory>, std::vector<IndexedFile>> ShowFilesAndDirsContinous(const std::string &path) {
-        std::vector<IndexedDirectory> dirs;
-        std::vector<IndexedFile> files;
+    std::tuple<std::unordered_map<std::string, IndexedDirectory>, std::unordered_map<std::string, IndexedFile>> ShowFilesAndDirsContinous(const std::string& path) {
+        indexing = true;
 
-        if (path.empty()) {
-            std::cerr << "ShowFilesAndDirsContinous: Empty path provided.\n";
-            return {dirs, files};
+        LoadFromFile(path); // load from saved .index if exists
+
+        std::unordered_map<std::string, IndexedFile> files;
+        std::unordered_map<std::string, IndexedDirectory> dirs;
+
+        IndexDirectory(path, files, dirs);  // Synchronous indexing
+        std::cout << "ShowFilesAndDirsContinous: Indexed " << files.size() << " files and " << dirs.size() << " directories in " << path << "\n";
+
+        {
+            std::lock_guard<std::mutex> lock(index_mutex);
+            file_index = std::move(files);
+            dir_index = std::move(dirs);
         }
 
-        std::lock_guard<std::mutex> lock(index_mutex);
+        indexing = false;
 
-        for (const auto& [key, dir] : dir_index) {
-            if (dir.path == path || dir.path == path + "/") {
-                dirs.push_back(dir);
-            }
-        }
-
-        for (const auto& [key, file] : file_index) {
-            if (file.path.find(path) == 0) { // Check if file is in the directory
-                files.push_back(file);
-            }
-        }
-
-        return {dirs, files};
+        SaveToFile(path);  // Save after indexing
+        return {dir_index, file_index};
     }
+
+    
 
 
     void Shutdown() {
@@ -423,3 +428,4 @@ namespace FileIndexer {
         }
     }
 }
+

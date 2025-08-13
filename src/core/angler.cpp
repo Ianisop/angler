@@ -11,6 +11,8 @@
 #include "angler_file_io.h"
 #include "file_indexer.h"
 
+#include <tuple>
+#include <unordered_map>
 #include <vector>
 #include <iostream>
 #include <fstream>
@@ -30,8 +32,8 @@ static ImVec2 drag_offset;
 int FONT_SIZE = 18; // global font size
 bool scale_loaded = false; // tracks if a theme has been loaded
 static char search_buf[256] = "";      // Input buffer for search query
-static std::vector<IndexedFile> results_files;
-static std::vector<IndexedDirectory> results_dirs;
+static std::unordered_map<std::string, IndexedFile> results_files;
+static std::unordered_map<std::string,IndexedDirectory> results_dirs;
 bool show_search_input = false;
 bool is_searching = false;
 bool search_ready = false;
@@ -190,6 +192,7 @@ void RunAnglerWidgets() {
             current_tab = &tabs[i];
             // Updated search to populate separate vectors for dirs and files
             std::tie(results_dirs, results_files) = FileIndexer::ShowFilesAndDirsContinous(current_tab->path);
+            //std::cout << results_dirs.size() << " directories and " << results_files.size() << " files found in tab: " << current_tab->name << std::endl;
             search_ready = true;
         }
 
@@ -245,11 +248,12 @@ void RunAnglerWidgets() {
 
     if (search_ready) {
         ImGui::SeparatorText("Directories");
-
+        int dir_imgui_id = 0;
+        int file_imgui_id = 0;
         GLuint folder_icon = Icons::FetchIconTextureByType(Icons::FOLDER, Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL);
-        for (size_t i = 0; i < results_dirs.size(); ++i) {
-            const auto& dir = results_dirs[i];
-            ImGui::PushID(static_cast<int>(i));
+        for (auto &[key,value] : results_dirs) {
+            const auto& dir = value;
+            ImGui::PushID(static_cast<int>(dir_imgui_id));
             ImGui::Image((void*)(intptr_t)folder_icon, ImVec2(Icons::ICON_SIZE_SMALL, Icons::ICON_SIZE_SMALL));
             ImGui::SameLine();
 
@@ -259,18 +263,21 @@ void RunAnglerWidgets() {
             if (ImGui::Button(dirname.c_str())) {
                 
                 // TODO: Open directory or switch tab
-                std::tie(results_dirs, results_files) = FileIndexer::ShowFilesAndDirsContinous(dir.path);
+                std::tie(results_dirs, results_files) = FileIndexer::ShowFilesAndDirsContinous(current_tab->path);
+
                 search_ready = true;
             }
             ImGui::PopID();
+            dir_imgui_id++;
         }
 
         ImGui::SeparatorText("Files");
-
+        
         GLuint file_icon = Icons::FetchIconTextureByType(Icons::DEFAULT, Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL);
-        for (size_t i = 0; i < results_files.size(); ++i) {
-            const auto& file = results_files[i];
-            ImGui::PushID(static_cast<int>(i));
+        for (auto &[key, value] : results_files) {
+            std::cout << "File: " << value.name << " | Path: " << value.path << std::endl;
+            const auto& file = value;
+            ImGui::PushID(static_cast<int>(file_imgui_id));
             ImGui::Image((void*)(intptr_t)file_icon, ImVec2(Icons::ICON_SIZE_SMALL, Icons::ICON_SIZE_SMALL));
             ImGui::SameLine();
 
@@ -280,6 +287,7 @@ void RunAnglerWidgets() {
                 // TODO: Open file or preview
             }
             ImGui::PopID();
+            file_imgui_id++;
         }
     }
 

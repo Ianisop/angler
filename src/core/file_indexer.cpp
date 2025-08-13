@@ -8,10 +8,12 @@
 #include <chrono>
 #include <sys/stat.h>
 #include <unordered_map>
+#include <chrono>
 
 using json = nlohmann::json;
 
 #define COMPRESSION_LEVEL 1
+#define DEBUG_MESURE_TIMES 1
 
 // ---------------- JSON Serialization ----------------
 
@@ -68,6 +70,9 @@ namespace FileIndexer {
     void IndexDirectory(const std::filesystem::path& directory,
         std::unordered_map<std::string, IndexedFile>& files_out,
         std::unordered_map<std::string, IndexedDirectory>& dirs_out) {
+#if DEBUG_MESURE_TIMES
+        std::chrono::steady_clock::time_point clock_begin = std::chrono::steady_clock::now();
+#endif  
         int files_count = 0;
         int dirs_count = 0;
         try {
@@ -99,7 +104,16 @@ namespace FileIndexer {
             std::cerr << "Indexing error: " << e.what() << "\n";
         }
         indexing = false;
-        std::cout << "Indexed " << files_count << " files and " << dirs_count << " directories in " << directory << "\n";
+        //std::cout << "Indexed " << files_count << " files and " << dirs_count << " directories in " << directory << "\n";
+#if DEBUG_MESURE_TIMES
+        std::chrono::steady_clock::time_point clock_end = std::chrono::steady_clock::now();
+
+        std::chrono::steady_clock::duration time_span = clock_end - clock_begin;
+
+        double nseconds = double(time_span.count()) * std::chrono::steady_clock::period::num / std::chrono::steady_clock::period::den;
+
+        std::cout << "It took me " << nseconds << " seconds.\n";
+#endif
     }
 
     long GetFileSize(std::string filename)
@@ -404,7 +418,7 @@ namespace FileIndexer {
         std::unordered_map<std::string, IndexedDirectory> dirs;
 
         IndexDirectory(path, files, dirs);  // Synchronous indexing
-        std::cout << "ShowFilesAndDirsContinous: Indexed " << files.size() << " files and " << dirs.size() << " directories in " << path << "\n";
+        //std::cout << "ShowFilesAndDirsContinous: Indexed " << files.size() << " files and " << dirs.size() << " directories in " << path << "\n";
 
         {
             std::lock_guard<std::mutex> lock(index_mutex);

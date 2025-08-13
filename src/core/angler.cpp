@@ -275,7 +275,7 @@ void RunAnglerWidgets() {
         
         GLuint file_icon = Icons::FetchIconTextureByType(Icons::DEFAULT, Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL);
         for (auto &[key, value] : results_files) {
-            std::cout << "File: " << value.name << " | Path: " << value.path << std::endl;
+            //std::cout << "File: " << value.name << " | Path: " << value.path << std::endl;
             const auto& file = value;
             ImGui::PushID(static_cast<int>(file_imgui_id));
             ImGui::Image((void*)(intptr_t)file_icon, ImVec2(Icons::ICON_SIZE_SMALL, Icons::ICON_SIZE_SMALL));
@@ -283,7 +283,7 @@ void RunAnglerWidgets() {
 
             std::string filename = file.name + " | " + FileIndexer::HumanReadableSize(file.size);
             if (ImGui::Button(filename.c_str())) {
-                std::cout << "Clicked on file: " << file.path << std::endl;
+                //std::cout << "Clicked on file: " << file.path << std::endl;
                 // TODO: Open file or preview
             }
             ImGui::PopID();

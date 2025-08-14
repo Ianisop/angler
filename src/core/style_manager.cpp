@@ -1,6 +1,8 @@
+#include <cstdint>
 #include <iostream>
 #include <fstream>
 #include <unordered_map>
+#include <imgui.h>
 
 std::unordered_map<std::string, int> colorNameToEnum = {
     {"WindowBg", ImGuiCol_WindowBg},

@@ -17,14 +17,13 @@
 #include <iostream>
 #include <fstream>
 
-
-
 // -- ICONS -- 
 GLuint folder_icon_texture;
 
 // -- GLOBALS --
 GLFWwindow* window;
 static int platform;
+int pending_unpin = -1;
 int display_w, display_h;
 static bool dragging = false;
 static ImVec2 drag_offset;
@@ -32,28 +31,28 @@ int FONT_SIZE = 18; // global font size
 bool scale_loaded = false; // tracks if a theme has been loaded
 static char search_buf[256] = "";      // Input buffer for search query
 static std::unordered_map<std::filesystem::path, IndexedFile> results_files;
-static std::unordered_map<std::filesystem::path,IndexedDirectory> results_dirs;
+static std::unordered_map<std::filesystem::path, IndexedDirectory> results_dirs;
 bool show_search_input = false;
 bool is_searching = false;
 bool search_ready = false;
 std::thread indexing_thread;
-
+std::string toolbar_title_path = "";
 
 // -- SIDEBAR --
 std::vector<Tab> tabs;
 int current_tab_index = -1;
 Tab* current_tab = nullptr;
 
-
-
-void glfw_error_callback(int error, const char* description) {
+void glfw_error_callback(int error, const char* description)
+{
     std::cerr << "GLFW Error " << error << ": " << description << std::endl;
 }
 
-
-bool LoadAnglerTabData(const std::string& filename = "cache.angler") {
+bool LoadAnglerTabData(const std::string& filename = "cache.angler")
+{
     std::ifstream infile(filename);
-    if (!infile.is_open()) {
+    if (!infile.is_open())
+    {
         std::cerr << "Failed to open .angler file, creating one with name: " << filename << std::endl;
         tabs.push_back({"Home", UserDirectories::Get(UserDir::Home)});
         tabs.push_back({"Downloads", UserDirectories::Get(UserDir::Downloads)});
@@ -67,10 +66,12 @@ bool LoadAnglerTabData(const std::string& filename = "cache.angler") {
 
     tabs.clear();
 
-    std::string line;
-    while (std::getline(infile, line)) {
+    std::string line = "";
+    while (std::getline(infile, line))
+    {
         size_t separator = line.find('|');
-        if (separator == std::string::npos) {
+        if (separator == std::string::npos)
+        {
             std::cerr << "Invalid line in .angler file: " << line << std::endl;
             continue;
         }
@@ -83,18 +84,19 @@ bool LoadAnglerTabData(const std::string& filename = "cache.angler") {
 
     infile.close();
 
-    if (!tabs.empty()) {
+    if (!tabs.empty())
+    {
         current_tab_index = 0;
         current_tab = &tabs[current_tab_index]; 
     }
-    
 
     return true;
 }
 
-
-void SetCurrentTab(int index) {
-    if (index < 0 || index >= static_cast<int>(tabs.size())) {
+void SetCurrentTab(int index)
+{
+    if (index < 0 || index >= static_cast<int>(tabs.size()))
+    {
         current_tab_index = -1;
         current_tab = nullptr;
         results_dirs.clear();
@@ -106,27 +108,23 @@ void SetCurrentTab(int index) {
     current_tab_index = index;
     current_tab = &tabs[current_tab_index];
 
-    // Populate results for this tab
     std::tie(results_dirs, results_files) = FileIndexer::ShowFilesAndDirsContinous(current_tab->path);
+    toolbar_title_path = current_tab->path.string();
     search_ready = true;
 }
 
-
-
-
-void RunAnglerWidgets() {
-    // Start new frame
+void RunAnglerWidgets()
+{
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    // Load style once
-    if (!scale_loaded && !LoadStyleFromScale("src/core/assets/my_skin.scale")) {
+    if (!scale_loaded && !LoadStyleFromScale("src/core/assets/my_skin.scale"))
+    {
         printf("Failed to load style\n");
     }
     scale_loaded = true;
 
-    // Layout constants
     float toolbar_height = 30.0f;
     float sidebar_width = ImGui::GetIO().DisplaySize.x * 0.18f;
     float screen_width = ImGui::GetIO().DisplaySize.x;
@@ -140,8 +138,8 @@ void RunAnglerWidgets() {
                                      ImGuiWindowFlags_NoSavedSettings |
                                      ImGuiWindowFlags_NoBringToFrontOnFocus;
     ImGui::Begin("Angler", nullptr, toolbar_flags);
-    if(platform != GLFW_PLATFORM_WAYLAND) {
-        // Drag to move window
+    if (platform != GLFW_PLATFORM_WAYLAND)
+    {
         ImGuiIO& io = ImGui::GetIO();
         ImVec2 toolbar_pos = ImGui::GetWindowPos();
         ImVec2 toolbar_size = ImGui::GetWindowSize();
@@ -149,11 +147,13 @@ void RunAnglerWidgets() {
         bool mouse_in_toolbar = mouse_pos.x >= toolbar_pos.x && mouse_pos.x <= (toolbar_pos.x + toolbar_size.x) &&
                                 mouse_pos.y >= toolbar_pos.y && mouse_pos.y <= (toolbar_pos.y + toolbar_size.y);
 
-        if (!dragging && mouse_in_toolbar && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        if (!dragging && mouse_in_toolbar && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        {
             dragging = true;
             if (dragging && !ImGui::IsMouseDown(ImGuiMouseButton_Left))
                 dragging = false;
-            if (dragging) {
+            if (dragging)
+            {
                 ImVec2 delta = io.MouseDelta;
                 int wx, wy;
                 glfwGetWindowPos(window, &wx, &wy);
@@ -162,22 +162,34 @@ void RunAnglerWidgets() {
         }
     }
 
-
     ImGui::SameLine(ImGui::GetWindowWidth() / 2);
 
-    std::string window_title = current_tab ? ("Angler: " + current_tab->name) : "Angler";
+    std::string window_title = "";
+    if (current_tab)
+    {
+        window_title = "Angler: " + toolbar_title_path;
+        
+    }
+    else
+    {
+        window_title = "Angler";
+        toolbar_title_path = "";
+    }
     ImGui::Text("%s", window_title.c_str());
 
     ImGui::SameLine(ImGui::GetWindowWidth() - 90);
-    if (ImGui::Button("_")) {
+    if (ImGui::Button("_"))
+    {
         // TODO: Minimize
     }
     ImGui::SameLine();
-    if (ImGui::Button("□")) {
+    if (ImGui::Button("□"))
+    {
         // TODO: Maximize toggle
     }
     ImGui::SameLine();
-    if (ImGui::Button("X")) {
+    if (ImGui::Button("X"))
+    {
         glfwSetWindowShouldClose(window, true);
     }
 
@@ -196,17 +208,18 @@ void RunAnglerWidgets() {
                  ImGuiWindowFlags_NoCollapse);
 
     // Tabs
-    for (int i = 0; i < tabs.size(); ++i) {
+    for (int i = 0; i < tabs.size(); ++i)
+    {
         ImGui::PushID(i);
         bool selected = (current_tab_index == i);
 
         ImVec2 text_size = ImGui::CalcTextSize(tabs[i].name.c_str());
         ImVec2 selectable_size = ImVec2(Icons::ICON_SIZE_SMALL + 4 + text_size.x, text_size.y + 4);
 
-        if (ImGui::Selectable("", selected, 0, selectable_size)) {
+        if (ImGui::Selectable("", selected, 0, selectable_size))
+        {
             SetCurrentTab(i);
         }
-        
 
         ImVec2 pos = ImGui::GetItemRectMin();
         ImGui::SetCursorScreenPos(ImVec2(pos.x + 2, pos.y + (selectable_size.y - Icons::ICON_SIZE_SMALL) * 0.5f));
@@ -215,31 +228,27 @@ void RunAnglerWidgets() {
         ImGui::SetCursorScreenPos(ImVec2(pos.x + Icons::ICON_SIZE_SMALL + 6, pos.y + (selectable_size.y - text_size.y) * 0.5f));
         ImGui::TextUnformatted(tabs[i].name.c_str());
 
-        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+        {
             ImGui::OpenPopup(("TabContextMenu" + std::to_string(i)).c_str());
         }
 
-        if (ImGui::BeginPopup(("TabContextMenu" + std::to_string(i)).c_str())) {
-            if (ImGui::MenuItem("Unpin Tab")) {
-
-                auto tab_to_remove = tabs[i].path;
-
-                AnglerFileIO::RemoveTabFromFile("cache.angler",tab_to_remove);
-
-                // Remove the tab
-                tabs.erase(tabs.begin() + i);
-                current_tab_index = i;
-                current_tab = &tabs[current_tab_index];
-   
-               
-            
+        if (ImGui::BeginPopup(("TabContextMenu" + std::to_string(i)).c_str()))
+        {
+            if (ImGui::MenuItem("Unpin Tab"))
+            {
+                pending_unpin = i; // just mark it
                 ImGui::CloseCurrentPopup();
+
+
             }
             
-            if (ImGui::MenuItem("Rename Tab")) {
+            if (ImGui::MenuItem("Rename Tab"))
+            {
                 // Handle rename logic here
             }
-            if (ImGui::MenuItem("Search In Tab")) {
+            if (ImGui::MenuItem("Search In Tab"))
+            {
                 show_search_input = true;
                 search_buf[0] = '\0';
             }
@@ -247,6 +256,34 @@ void RunAnglerWidgets() {
         }
         ImGui::PopID();
     }
+
+    if (pending_unpin >= 0 && pending_unpin < static_cast<int>(tabs.size()))
+    {
+        const auto tab_to_remove = tabs[pending_unpin].path;
+        AnglerFileIO::RemoveTabFromFile("cache.angler", tab_to_remove);
+
+        tabs.erase(tabs.begin() + pending_unpin);
+
+        if (tabs.empty())
+        {
+            current_tab_index = -1;
+            current_tab = nullptr;
+            results_dirs.clear();
+            results_files.clear();
+            search_ready = false;
+        }
+        else
+        {
+            current_tab_index = std::min(pending_unpin, static_cast<int>(tabs.size()) - 1);
+            current_tab = &tabs[current_tab_index];
+
+            // refresh the right pane to reflect the new current tab
+            std::tie(results_dirs, results_files) =
+                FileIndexer::ShowFilesAndDirsContinous(current_tab->path);
+            search_ready = true;
+        }
+    }
+
     ImGui::End();
 
     // RIGHT PANE
@@ -266,65 +303,90 @@ void RunAnglerWidgets() {
                  ImGuiWindowFlags_NoCollapse |
                  ImGuiWindowFlags_NoTitleBar);
 
-    if (search_ready) {
+    if (search_ready)
+    {
         ImGui::SeparatorText("Directories");
+
         int dir_imgui_id = 0;
-        int file_imgui_id = 0;
-        GLuint folder_icon = Icons::FetchIconTextureByType(Icons::FOLDER, Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL);
-        for (auto &[key,value] : results_dirs) {
-            const auto& dir = value;
-            ImGui::PushID(static_cast<int>(dir_imgui_id));
-            ImGui::Image((void*)(intptr_t)folder_icon, ImVec2(Icons::ICON_SIZE_SMALL, Icons::ICON_SIZE_SMALL));
+        GLuint folder_icon = Icons::FetchIconTextureByType(
+            Icons::FOLDER, Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL);
+        
+        // Defer mutations until after the loop
+        std::optional<std::filesystem::path> pending_change_dir;
+        
+        for (auto it = results_dirs.begin(); it != results_dirs.end(); ++it)
+        {
+            auto& key   = it->first;
+            auto& value = it->second;              // IndexedDirectory
+            const auto& dir = value;               // alias for clarity
+        
+            ImGui::PushID(dir_imgui_id);
+            ImGui::Image((void*)(intptr_t)folder_icon,
+                         ImVec2(Icons::ICON_SIZE_SMALL, Icons::ICON_SIZE_SMALL));
             ImGui::SameLine();
-
+        
             std::string size_in_human_format = FileIndexer::HumanReadableSize(dir.size);
-            //std::cout << "Clicked on directory: " << dir.path << " | " << "(" << dir.size << " , " << size_in_human_format << ")" << std::endl;
-            std::string dirname = dir.name  + " | " + size_in_human_format;
-            if (ImGui::Button(dirname.c_str())) {
-                
-                // TODO: Open directory or switch tab
-                std::tie(results_dirs, results_files) = FileIndexer::ShowFilesAndDirsContinous(current_tab->path);
-
-                search_ready = true;
+            std::string dirname = dir.name + " | " + size_in_human_format;
+        
+            if (ImGui::Button(dirname.c_str()))
+            {
+                // DO NOT mutate results_* here; just remember the target
+                toolbar_title_path = value.path;
+                pending_change_dir = value.path;
             }
-
-            if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+        
+            if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+            {
                 ImGui::OpenPopup(("TabContextMenu" + std::to_string(dir_imgui_id)).c_str());
             }
-    
-            if (ImGui::BeginPopup(("TabContextMenu" + std::to_string(dir_imgui_id)).c_str())) {
-                if (ImGui::MenuItem("Pin Tab")) {
+        
+            if (ImGui::BeginPopup(("TabContextMenu" + std::to_string(dir_imgui_id)).c_str()))
+            {
+                if (ImGui::MenuItem("Pin Tab"))
+                {
                     Tab new_tab(value.name, value.path);
                     tabs.push_back(new_tab);
                     AnglerFileIO::SaveTabsToFile("cache.angler");
-                    current_tab_index = tabs.size() - 1;
+                    current_tab_index = (int)tabs.size() - 1;
                     current_tab = &tabs[current_tab_index];
                     ImGui::CloseCurrentPopup();
                 }
-                
-                if (ImGui::MenuItem("Proprieties")) {
-                    // Handle showing metadata
+        
+                if (ImGui::MenuItem("Properties"))
+                {
+                    // TODO: show metadata
                 }
-
+        
                 ImGui::EndPopup();
             }
+        
             ImGui::PopID();
-            dir_imgui_id++;
+            ++dir_imgui_id;
         }
+        
+        // Apply the mutation safely *after* iteration
+        if (pending_change_dir)
+        {
+            std::tie(results_dirs, results_files) =
+                FileIndexer::ShowFilesAndDirsContinous(*pending_change_dir);
+            search_ready = true;
+        }
+        
 
         ImGui::SeparatorText("Files");
-        
+        int file_imgui_id = 0;
+
         GLuint file_icon = Icons::FetchIconTextureByType(Icons::DEFAULT, Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL);
-        for (auto &[key, value] : results_files) {
-            //std::cout << "File: " << value.name << " | Path: " << value.path << std::endl;
+        for (auto& [key, value] : results_files)
+        {
             const auto& file = value;
             ImGui::PushID(static_cast<int>(file_imgui_id));
             ImGui::Image((void*)(intptr_t)file_icon, ImVec2(Icons::ICON_SIZE_SMALL, Icons::ICON_SIZE_SMALL));
             ImGui::SameLine();
 
             std::string filename = file.name + " | " + FileIndexer::HumanReadableSize(file.size);
-            if (ImGui::Button(filename.c_str())) {
-                //std::cout << "Clicked on file: " << file.path << std::endl;
+            if (ImGui::Button(filename.c_str()))
+            {
                 // TODO: Open file or preview
             }
             ImGui::PopID();
@@ -338,78 +400,82 @@ void RunAnglerWidgets() {
     ImGui::Render();
 }
 
-
-
-
-void LoadIcons() {
-    folder_icon_texture = Icons::FetchIconTextureByType(Icons::FOLDER,Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL);
-
+void LoadIcons()
+{
+    folder_icon_texture = Icons::FetchIconTextureByType(Icons::FOLDER, Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL, &Icons::ICON_SIZE_SMALL);
 }
 
-int main() {
-    //std::cout << "Home: "     << UserDirectories::Get(UserDir::Home) << "\n";
-    //std::cout << "Documents: "<< UserDirectories::Get(UserDir::Documents) << "\n";
-    //std::cout << "Desktop: "  << UserDirectories::Get(UserDir::Desktop) << "\n";
-    //std::cout << "Downloads: "<< UserDirectories::Get(UserDir::Downloads) << "\n";
-
+int main()
+{
     LoadAnglerTabData();
-    //std::cout << "Loaded tab data!" << std::endl;
-    // Setup GLFW
+    if (current_tab_index < 0 && !tabs.empty())
+    {
+        SetCurrentTab(0);
+    }
     glfwSetErrorCallback(glfw_error_callback);
-    if (!glfwInit()) {
+    if (!glfwInit())
+    {
         std::cerr << "Failed to initialize GLFW\n";
         return -1;
     }
 
-    // OpenGL version: 3.3 Core
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
 #ifdef __APPLE__
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // Required on Mac
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
-    //std::cout << "Creating window!" << std::endl;
-    // Create window
+
     window = glfwCreateWindow(1280, 720, "Angler", nullptr, nullptr);
-    if (!window) {
+    if (!window)
+    {
         std::cerr << "Failed to create GLFW window\n";
         glfwTerminate();
         return -1;
     }
     glfwMakeContextCurrent(window);
-    glfwSwapInterval(1); // Enable vsync
-    //std::cout << "window created!" << std::endl;
-    // Initialize GLAD
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+    glfwSwapInterval(1);
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
+    {
         std::cerr << "Failed to initialize GLAD\n";
         return -1;
     }
-    //std::cout << "Glad initialized!" << std::endl;
-    // Setup Dear ImGui
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
-    //std::cout << "ImGui Initialized!" << std::endl;
 
-
-    // Initialize ImGui platform/renderer backends
     ImFont* mainFont = io.Fonts->AddFontFromFileTTF("src/core/assets/karla.ttf", FONT_SIZE);
-    ImGui::PushFont(io.Fonts->Fonts[0]); // or store mainFont in a global
-    // Init backends
+    ImGui::PushFont(io.Fonts->Fonts[0]);
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
     platform = glfwGetPlatform();
-    //std::cout << "ImGui backends ready" << std::endl;
+    std::string platform_name = "";
+    switch(platform)
+    {
+        case GLFW_PLATFORM_WAYLAND:
+            platform_name = "wayland";
+            break;
+        case GLFW_PLATFORM_X11:
+            platform_name = "X11";
+            break;
+        case GLFW_PLATFORM_WIN32:
+            platform_name = "windows";
+            break;
+        case GLFW_PLATFORM_COCOA:
+            platform_name = "cocoa";
+            break;
+            case GLFW_PLATFORM_UNAVAILABLE:
+            platform_name = "unknown";
+            break;
+    }
+    std::cout << "running on " << platform_name << std::endl;
     LoadIcons();
-    //std::cout << "icons loaded!" << std::endl;
 
-    // Main loop
-    while (!glfwWindowShouldClose(window)) {
+    while (!glfwWindowShouldClose(window))
+    {
         glfwPollEvents();
-
-
-
         RunAnglerWidgets();
 
         glfwGetFramebufferSize(window, &display_w, &display_h);
@@ -421,7 +487,6 @@ int main() {
         glfwSwapBuffers(window);
     }
 
-    // Cleanup
     FileIndexer::Shutdown();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();

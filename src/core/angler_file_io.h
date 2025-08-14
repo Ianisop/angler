@@ -11,12 +11,15 @@
 // Declare externally defined tab vector
 extern std::vector<Tab> tabs;
 
-namespace AnglerFileIO {
+namespace AnglerFileIO 
+{
 
     // Load tab data from a .angler file
-    inline bool LoadTabsFromFile(const std::string& filename) {
+    inline bool LoadTabsFromFile(const std::string& filename) 
+    {
         std::ifstream infile(filename);
-        if (!infile.is_open()) {
+        if (!infile.is_open()) 
+        {
             std::cerr << "[Angler] Failed to open file: " << filename << "\n";
             return false;
         }
@@ -24,9 +27,11 @@ namespace AnglerFileIO {
         tabs.clear(); // Clear existing tabs
     
         std::string line;
-        while (std::getline(infile, line)) {
+        while (std::getline(infile, line)) 
+        {
             size_t separator = line.find('|');
-            if (separator == std::string::npos) {
+            if (separator == std::string::npos) 
+            {
                 std::cerr << "Invalid line in .angler file: " << line << std::endl;
                 continue;
             }
@@ -42,14 +47,17 @@ namespace AnglerFileIO {
     }
     
 
-    inline bool SaveTabsToFile(const std::string& filename) {
+    inline bool SaveTabsToFile(const std::string& filename) 
+    {
         std::unordered_set<std::string> existingTabs;
     
         // Load existing tabs from file
         std::ifstream infile(filename);
-        if (infile.is_open()) {
+        if (infile.is_open()) 
+        {
             std::string line;
-            while (std::getline(infile, line)) {
+            while (std::getline(infile, line)) 
+            {
                 existingTabs.insert(line); // store each full "name|path" line
             }
             infile.close();
@@ -57,15 +65,18 @@ namespace AnglerFileIO {
     
         // Open file for appending
         std::ofstream outfile(filename, std::ios::app);
-        if (!outfile.is_open()) {
+        if (!outfile.is_open()) 
+        {
             std::cerr << "[Angler] Failed to open file for writing: " << filename << "\n";
             return false;
         }
     
         // Write only tabs that aren't already in the file
-        for (const auto& tab : tabs) {
-            std::string line = tab.name + "|" + tab.path;
-            if (existingTabs.find(line) == existingTabs.end()) {
+        for (const auto& tab : tabs)
+        {
+            std::string line = tab.name + "|" + tab.path.string();
+            if (existingTabs.find(line) == existingTabs.end())
+            {
                 outfile << line << "\n";
             }
         }
@@ -73,10 +84,12 @@ namespace AnglerFileIO {
         return true;
     }
     
-    inline bool RemoveTabFromFile(const std::string& filename, const std::string& tabPath) {
+    inline bool RemoveTabFromFile(const std::string& filename, const std::string& tabPath)
+    {
         //std::cout << "REMOVING FROM PATH: " << tabPath << std::endl;
         std::ifstream infile(filename);
-        if (!infile.is_open()) {
+        if (!infile.is_open())
+        {
             std::cerr << "[Angler] Failed to open file for reading: " << filename << "\n";
             return false;
         }
@@ -84,10 +97,12 @@ namespace AnglerFileIO {
         // Read all lines into memory
         std::vector<std::string> lines;
         std::string line;
-        while (std::getline(infile, line)) {
+        while (std::getline(infile, line)) 
+        {
             // Each line format: name|path
             auto sep = line.find('|');
-            if (sep != std::string::npos) {
+            if (sep != std::string::npos) 
+            {
                 std::string path = line.substr(sep + 1);
                 if (path == tabPath) continue; // skip this tab
             }
@@ -97,12 +112,14 @@ namespace AnglerFileIO {
     
         // Rewrite file without the removed tab
         std::ofstream outfile(filename, std::ios::trunc);
-        if (!outfile.is_open()) {
+        if (!outfile.is_open()) 
+        {
             std::cerr << "[Angler] Failed to open file for writing: " << filename << "\n";
             return false;
         }
     
-        for (const auto& l : lines) {
+        for (const auto& l : lines) 
+        {
             //std::cout << l << std::endl;
             outfile << l << "\n";
         }

@@ -3,14 +3,17 @@
 #include <unordered_map>
 #include "texture_loader.cpp"
 
-namespace Icons {
+namespace Icons 
+{
+    
     int ICON_SIZE_SMALL = 16;
     int ICON_SIZE_MEDIUM = 32;
     int ICON_SIZE_BIG = 64;
     
 
 
-    enum ICON_TYPE {
+    enum ICON_TYPE 
+    {
         DEFAULT,
         FOLDER,
         AUDIO,
@@ -20,24 +23,29 @@ namespace Icons {
         COMPRESSED
     };
     
-    struct IconData {
+    struct IconData 
+    {
         ICON_TYPE type;
         int size;
     
         IconData(ICON_TYPE icon_type, int icon_size)
             : type(icon_type), size(icon_size) {}
     
-        bool operator==(const IconData& other) const {
+        bool operator==(const IconData& other) const 
+        {
             return type == other.type && size == other.size;
         }
         
     };
 }
 
-namespace std {
+namespace std 
+{
     template<>
-    struct hash<Icons::IconData> {
-        std::size_t operator()(const Icons::IconData& k) const {
+    struct hash<Icons::IconData> 
+    {
+        std::size_t operator()(const Icons::IconData& k) const 
+        {
             return std::hash<int>()(k.type) ^ (std::hash<int>()(k.size) << 1);
         }
     };
@@ -45,7 +53,8 @@ namespace std {
 
 namespace Icons {
     // Icon path map
-    static std::unordered_map<IconData, std::string> icons = {
+    static std::unordered_map<IconData, std::string> icons = 
+    {
         { { DEFAULT, ICON_SIZE_SMALL },  "src/core/assets/icons/16/file.png" },
         { { DEFAULT, ICON_SIZE_MEDIUM }, "src/core/assets/icons/32/file.png" },
         { { DEFAULT, ICON_SIZE_BIG },    "src/core/assets/icons/64/file.png" },
@@ -80,11 +89,13 @@ namespace Icons {
         // Texture cache 
         static std::unordered_map<IconData, GLuint> texture_cache;
 
-        GLuint FetchIconTextureByType(ICON_TYPE icon_type, int icon_size, int* out_width, int* out_height) {
+        GLuint FetchIconTextureByType(ICON_TYPE icon_type, int icon_size, int* out_width, int* out_height) 
+        {
             IconData key(icon_type, icon_size);
         
             // Check cache
-            if (texture_cache.find(key) != texture_cache.end()) {
+            if (texture_cache.find(key) != texture_cache.end()) 
+            {
                 return texture_cache[key];
             }
         
@@ -92,9 +103,11 @@ namespace Icons {
             auto it = icons.find(key);
             std::string filepath;
         
-            if (it != icons.end()) {
+            if (it != icons.end()) 
+            {
                 filepath = it->second;
-            } else {
+            } else 
+            {
                 filepath = icons[{ DEFAULT, icon_size }]; // fallback
             }
         

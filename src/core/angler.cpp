@@ -93,6 +93,23 @@ bool LoadAnglerTabData(const std::string& filename = "cache.angler") {
 }
 
 
+void SetCurrentTab(int index) {
+    if (index < 0 || index >= static_cast<int>(tabs.size())) {
+        current_tab_index = -1;
+        current_tab = nullptr;
+        results_dirs.clear();
+        results_files.clear();
+        search_ready = false;
+        return;
+    }
+
+    current_tab_index = index;
+    current_tab = &tabs[current_tab_index];
+
+    // Populate results for this tab
+    std::tie(results_dirs, results_files) = FileIndexer::ShowFilesAndDirsContinous(current_tab->path);
+    search_ready = true;
+}
 
 
 
@@ -187,14 +204,9 @@ void RunAnglerWidgets() {
         ImVec2 selectable_size = ImVec2(Icons::ICON_SIZE_SMALL + 4 + text_size.x, text_size.y + 4);
 
         if (ImGui::Selectable("", selected, 0, selectable_size)) {
-            current_tab_index = i;
-            current_tab = &tabs[i];
-            //std::cout << "GIVEN PATH !!!!!!!!!!!!!!!!!!!!!!!!!!:: " << current_tab->path << std::endl;
-            // Updated search to populate separate vectors for dirs and files
-            std::tie(results_dirs, results_files) = FileIndexer::ShowFilesAndDirsContinous(current_tab->path);
-            //std::cout << results_dirs.size() << " directories and " << results_files.size() << " files found in tab: " << current_tab->name << std::endl;
-            search_ready = true;
+            SetCurrentTab(i);
         }
+        
 
         ImVec2 pos = ImGui::GetItemRectMin();
         ImGui::SetCursorScreenPos(ImVec2(pos.x + 2, pos.y + (selectable_size.y - Icons::ICON_SIZE_SMALL) * 0.5f));
@@ -209,13 +221,21 @@ void RunAnglerWidgets() {
 
         if (ImGui::BeginPopup(("TabContextMenu" + std::to_string(i)).c_str())) {
             if (ImGui::MenuItem("Unpin Tab")) {
+
+                auto tab_to_remove = tabs[i].path;
+
+                AnglerFileIO::RemoveTabFromFile("cache.angler",tab_to_remove);
+
+                // Remove the tab
                 tabs.erase(tabs.begin() + i);
-                if (current_tab_index >= i) {
-                    current_tab_index = std::max(0, current_tab_index - 1);
-                    current_tab = (tabs.empty() ? nullptr : &tabs[current_tab_index]);
-                }
+                current_tab_index = i;
+                current_tab = &tabs[current_tab_index];
+   
+               
+            
                 ImGui::CloseCurrentPopup();
             }
+            
             if (ImGui::MenuItem("Rename Tab")) {
                 // Handle rename logic here
             }
@@ -267,6 +287,27 @@ void RunAnglerWidgets() {
 
                 search_ready = true;
             }
+
+            if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+                ImGui::OpenPopup(("TabContextMenu" + std::to_string(dir_imgui_id)).c_str());
+            }
+    
+            if (ImGui::BeginPopup(("TabContextMenu" + std::to_string(dir_imgui_id)).c_str())) {
+                if (ImGui::MenuItem("Pin Tab")) {
+                    Tab new_tab(value.name, value.path);
+                    tabs.push_back(new_tab);
+                    AnglerFileIO::SaveTabsToFile("cache.angler");
+                    current_tab_index = tabs.size() - 1;
+                    current_tab = &tabs[current_tab_index];
+                    ImGui::CloseCurrentPopup();
+                }
+                
+                if (ImGui::MenuItem("Proprieties")) {
+                    // Handle showing metadata
+                }
+
+                ImGui::EndPopup();
+            }
             ImGui::PopID();
             dir_imgui_id++;
         }
@@ -312,7 +353,7 @@ int main() {
     //std::cout << "Downloads: "<< UserDirectories::Get(UserDir::Downloads) << "\n";
 
     LoadAnglerTabData();
-    std::cout << "Loaded tab data!" << std::endl;
+    //std::cout << "Loaded tab data!" << std::endl;
     // Setup GLFW
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit()) {
@@ -328,7 +369,7 @@ int main() {
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // Required on Mac
 #endif
-    std::cout << "Creating window!" << std::endl;
+    //std::cout << "Creating window!" << std::endl;
     // Create window
     window = glfwCreateWindow(1280, 720, "Angler", nullptr, nullptr);
     if (!window) {
@@ -338,18 +379,18 @@ int main() {
     }
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); // Enable vsync
-    std::cout << "window created!" << std::endl;
+    //std::cout << "window created!" << std::endl;
     // Initialize GLAD
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::cerr << "Failed to initialize GLAD\n";
         return -1;
     }
-    std::cout << "Glad initialized!" << std::endl;
+    //std::cout << "Glad initialized!" << std::endl;
     // Setup Dear ImGui
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
-    std::cout << "ImGui Initialized!" << std::endl;
+    //std::cout << "ImGui Initialized!" << std::endl;
 
 
     // Initialize ImGui platform/renderer backends
@@ -359,9 +400,9 @@ int main() {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
     platform = glfwGetPlatform();
-    std::cout << "ImGui backends ready" << std::endl;
+    //std::cout << "ImGui backends ready" << std::endl;
     LoadIcons();
-    std::cout << "icons loaded!" << std::endl;
+    //std::cout << "icons loaded!" << std::endl;
 
     // Main loop
     while (!glfwWindowShouldClose(window)) {

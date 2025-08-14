@@ -129,7 +129,7 @@ namespace FileIndexer {
             }
         }
 
-        std::cout << "INDEX DIRECTORY: " << files_out.size() << " | " << dirs_out.size() << std::endl;
+        //std::cout << "INDEX DIRECTORY: " << files_out.size() << " | " << dirs_out.size() << std::endl;
     }
 
 
@@ -185,7 +185,7 @@ namespace FileIndexer {
 
         index_thread = std::thread([directory]() {
             IndexAsync(directory);
-            std::cout << "indexing async: " << directory << std::endl;
+            //std::cout << "indexing async: " << directory << std::endl;
         });
     }
 
@@ -318,8 +318,8 @@ namespace FileIndexer {
         if (std::remove(base.c_str()) != 0) {
             std::cerr << "Failed to delete temporary .index file\n";
         } else {
-            std::cout << "Index saved and compressed to " << zst << "\n";
-            std::cout << "Deleted temporary .index file\n";
+            //std::cout << "Index saved and compressed to " << zst << "\n";
+            //std::cout << "Deleted temporary .index file\n";
         }
     }
 

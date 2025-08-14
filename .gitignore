@@ -13,8 +13,8 @@ CMakeUserPresets.json
 
 build/
 
-cache.angler
-
+*.angler
+.index.zst
 # Prerequisites
 *.d
 

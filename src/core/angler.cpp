@@ -189,6 +189,7 @@ void RunAnglerWidgets() {
         if (ImGui::Selectable("", selected, 0, selectable_size)) {
             current_tab_index = i;
             current_tab = &tabs[i];
+            //std::cout << "GIVEN PATH !!!!!!!!!!!!!!!!!!!!!!!!!!:: " << current_tab->path << std::endl;
             // Updated search to populate separate vectors for dirs and files
             std::tie(results_dirs, results_files) = FileIndexer::ShowFilesAndDirsContinous(current_tab->path);
             //std::cout << results_dirs.size() << " directories and " << results_files.size() << " files found in tab: " << current_tab->name << std::endl;

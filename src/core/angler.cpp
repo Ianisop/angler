@@ -16,11 +16,14 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
+#include <algorithm>
 
 // -- ICONS -- 
 GLuint folder_icon_texture;
 
 // -- GLOBALS --
+static ImVec2 pos(100, 100);
+static int window_move_multiplier = 3;
 GLFWwindow* window;
 static int platform;
 int pending_unpin = -1;
@@ -113,6 +116,71 @@ void SetCurrentTab(int index)
     search_ready = true;
 }
 
+void ClampWindowToMonitor(GLFWwindow* window, float& pos_x, float& pos_y)
+{
+    // Get window position
+    int win_x, win_y;
+    glfwGetWindowPos(window, &win_x, &win_y);
+
+    // Get window size
+    int win_width, win_height;
+    glfwGetWindowSize(window, &win_width, &win_height);
+
+    // Find which monitor the window is mostly on
+    int count;
+    GLFWmonitor** monitors = glfwGetMonitors(&count);
+
+    GLFWmonitor* targetMonitor = nullptr;
+
+    for (int i = 0; i < count; ++i)
+    {
+        int mon_x, mon_y;
+        glfwGetMonitorPos(monitors[i], &mon_x, &mon_y);
+
+        const GLFWvidmode* mode = glfwGetVideoMode(monitors[i]);
+        int mon_width = mode->width;
+        int mon_height = mode->height;
+
+        // Simple overlap check: is window inside monitor bounds at all
+        if (win_x + win_width > mon_x && win_x < mon_x + mon_width &&
+            win_y + win_height > mon_y && win_y < mon_y + mon_height)
+        {
+            targetMonitor = monitors[i];
+            break;
+        }
+    }
+
+    // Fallback to primary monitor
+    if (!targetMonitor) targetMonitor = glfwGetPrimaryMonitor();
+
+    // Get monitor position and size
+    int mon_x, mon_y;
+    glfwGetMonitorPos(targetMonitor, &mon_x, &mon_y);
+    const GLFWvidmode* mode = glfwGetVideoMode(targetMonitor);
+    int mon_width = mode->width;
+    int mon_height = mode->height;
+
+    // Clamp window position to monitor
+    pos_x = std::clamp(pos_x, (float)mon_x, (float)(mon_x + mon_width - win_width));
+    pos_y = std::clamp(pos_y, (float)mon_y, (float)(mon_y + mon_height - win_height));
+
+    // Apply position
+    glfwSetWindowPos(window, (int)pos_x* window_move_multiplier, (int)pos_y* window_move_multiplier);
+}
+
+void HandleWindowMovingByKey()
+{
+    if (ImGui::IsKeyDown(ImGuiKey_LeftArrow))  pos.x -= 1;
+    if (ImGui::IsKeyDown(ImGuiKey_RightArrow)) pos.x += 1;
+    if (ImGui::IsKeyDown(ImGuiKey_UpArrow))    pos.y -= 1;
+    if (ImGui::IsKeyDown(ImGuiKey_DownArrow))  pos.y += 1;
+    //std::cout << pos.x << ":x y: " << pos.y << std::endl;
+
+    ClampWindowToMonitor(window,pos.x,pos.y);
+
+    //glfwSetWindowPos(window, pos.x * window_move_multiplier, pos.y * window_move_multiplier);
+}
+
 void RunAnglerWidgets()
 {
     ImGui_ImplOpenGL3_NewFrame();
@@ -134,10 +202,13 @@ void RunAnglerWidgets()
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(ImVec2(screen_width, toolbar_height));
     ImGuiWindowFlags toolbar_flags = ImGuiWindowFlags_NoDecoration |
-                                     ImGuiWindowFlags_NoMove |
                                      ImGuiWindowFlags_NoSavedSettings |
                                      ImGuiWindowFlags_NoBringToFrontOnFocus;
     ImGui::Begin("Angler", nullptr, toolbar_flags);
+    HandleWindowMovingByKey();
+    
+    //TODO: smooth this out
+    /*
     if (platform != GLFW_PLATFORM_WAYLAND)
     {
         ImGuiIO& io = ImGui::GetIO();
@@ -147,20 +218,39 @@ void RunAnglerWidgets()
         bool mouse_in_toolbar = mouse_pos.x >= toolbar_pos.x && mouse_pos.x <= (toolbar_pos.x + toolbar_size.x) &&
                                 mouse_pos.y >= toolbar_pos.y && mouse_pos.y <= (toolbar_pos.y + toolbar_size.y);
 
+        // When toolbar is hovered and left mouse button is pressed, start dragging
         if (!dragging && mouse_in_toolbar && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
         {
             dragging = true;
-            if (dragging && !ImGui::IsMouseDown(ImGuiMouseButton_Left))
-                dragging = false;
-            if (dragging)
+            // store initial offset between mouse and window pos
+            int wx, wy;
+            glfwGetWindowPos(window, &wx, &wy);
+            drag_offset = ImVec2(io.MousePos.x - wx, io.MousePos.y - wy);
+        }
+
+        // While dragging, move window with mouse
+        if (dragging)
+        {
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
             {
-                ImVec2 delta = io.MouseDelta;
+                pos.x = (int)(io.MousePos.x - drag_offset.x);
+                pos.y = (int)(io.MousePos.y - drag_offset.y);
+        
                 int wx, wy;
                 glfwGetWindowPos(window, &wx, &wy);
-                glfwSetWindowPos(window, wx + (int)delta.x, wy + (int)delta.y);
+        
+                // only move if change is significant
+                if (pos.x != wx || pos.y != wy)
+                    ClampWindowToMonitor(window,pos.x,pos.y);
+            }
+            else
+            {
+                dragging = false;
             }
         }
-    }
+        
+
+    }*/
 
     ImGui::SameLine(ImGui::GetWindowWidth() / 2);
 

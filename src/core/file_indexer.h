@@ -10,31 +10,51 @@
 
 using json = nlohmann::json;
 
-struct IndexedFile {
-    std::string name;
-    std::filesystem::path path;
-    std::uintmax_t size;
-    std::filesystem::file_time_type last_modified;
-    std::string extension;
 
-    void to_json(json& j) const;
-    void from_json(const json& j);
-};
+namespace fileindexer {
 
-struct IndexedDirectory {
-    std::string name;
-    std::filesystem::path path;
-    std::uintmax_t size;
-    std::filesystem::file_time_type last_modified;
+    enum EXTENSION_TYPE
+    {
+        DIRECTORY,
+        ARCHIVE,
+        FILE,
+        AUDIO,
+        VIDEO,
+        IMAGE,
+        TEXT,
+        PDF,
+        DOC,
+        PPT,
+        SPREADSHEET
+        
+    };
 
-    void to_json(json& j) const;
-    void from_json(const json& j);
-};
+    struct IndexedFile {
+        std::string name;
+        std::filesystem::path path;
+        std::uintmax_t size;
+        std::filesystem::file_time_type last_modified;
+        EXTENSION_TYPE extension_type;
+        std::string extension;
+    
+        void to_json(json& j) const;
+        void from_json(const json& j);
+    };
+    
+    struct IndexedDirectory {
+        std::string name;
+        std::filesystem::path path;
+        std::uintmax_t size;
+        std::filesystem::file_time_type last_modified;
+    
+        void to_json(json& j) const;
+        void from_json(const json& j);
+    };
 
-namespace FileIndexer {
     void StartIndexing(const std::string& directory);
     bool LoadFromFile(const std::string& path);
     void SaveToFile(const std::string& path);
+    EXTENSION_TYPE GetExtensionType(std::filesystem::path extension);
     std::vector<IndexedFile> ShowFilesInTab(const std::string& path);
     std::vector<IndexedFile> SearchFiles(const std::string& query);
     std::vector<IndexedDirectory> SearchDirectories(const std::string& query);

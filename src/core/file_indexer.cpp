@@ -23,7 +23,7 @@ using json = nlohmann::json;
 
 // ---------------- JSON Serialization ----------------
 
-void IndexedFile::to_json(json &j) const
+void fileindexer::IndexedFile::to_json(json &j) const
 {
     j = json{
         {"name", name},
@@ -35,7 +35,7 @@ void IndexedFile::to_json(json &j) const
                               .count()}};
 }
 
-void IndexedFile::from_json(const json &j)
+void fileindexer::IndexedFile::from_json(const json &j)
 {
     name = j.at("name").get<std::string>();
     path = j.at("path").get<std::string>();
@@ -45,7 +45,7 @@ void IndexedFile::from_json(const json &j)
     last_modified = std::filesystem::file_time_type(std::chrono::seconds(secs));
 }
 
-void IndexedDirectory::to_json(json &j) const
+void fileindexer::IndexedDirectory::to_json(json &j) const
 {
     j = json{
         {"name", name},
@@ -56,7 +56,7 @@ void IndexedDirectory::to_json(json &j) const
                               .count()}};
 }
 
-void IndexedDirectory::from_json(const json &j)
+void fileindexer::IndexedDirectory::from_json(const json &j)
 {
     name = j.at("name").get<std::string>();
     path = j.at("path").get<std::string>();
@@ -65,7 +65,7 @@ void IndexedDirectory::from_json(const json &j)
     last_modified = std::filesystem::file_time_type(std::chrono::seconds(secs));
 }
 
-// --- NEW: small RAII guard to always reset the indexing flag
+// small RAII guard to always reset the indexing flag
 struct IndexingGuard
 {
     std::atomic<bool> &flag;
@@ -81,7 +81,7 @@ struct IndexingGuard
 
 // ---------------- FileIndexer Implementation ----------------
 
-namespace FileIndexer
+namespace fileindexer
 {
     namespace
     {
@@ -92,7 +92,6 @@ namespace FileIndexer
         std::atomic<bool> indexing{false};
         std::mutex index_mutex;
     }
-
 
 
     std::uintmax_t GetDirectorySize(const std::filesystem::path &dir)
@@ -184,11 +183,48 @@ namespace FileIndexer
                 file.path = path;
                 file.size = std::filesystem::file_size(path, ec);
                 file.extension = path.extension().string();
+                file.extension_type = GetExtensionType(path);
                 file.last_modified = std::filesystem::last_write_time(path, ec);
                 if (!ec) files_out[path] = std::move(file);
             }
         }
     }
+
+    EXTENSION_TYPE GetExtensionType(std::filesystem::path extension)
+    {
+        static const std::unordered_map<std::string, EXTENSION_TYPE> mapping = {
+            {".txt",EXTENSION_TYPE::TEXT},
+            {".doc",EXTENSION_TYPE::DOC},
+            {".docx",EXTENSION_TYPE::DOC},  
+            {".pdf",EXTENSION_TYPE::PDF},
+            {".png", EXTENSION_TYPE::IMAGE},
+            {".jpg", EXTENSION_TYPE::IMAGE},
+            {".bmp", EXTENSION_TYPE::IMAGE},
+            {".mp3", EXTENSION_TYPE::AUDIO},
+            {".wav", EXTENSION_TYPE::AUDIO},
+            {".flac", EXTENSION_TYPE::AUDIO},
+            {".ogg", EXTENSION_TYPE::AUDIO},
+            {".mp4", EXTENSION_TYPE::VIDEO},
+            {".mkv", EXTENSION_TYPE::VIDEO},
+            {".mov", EXTENSION_TYPE::VIDEO},
+            {".avi", EXTENSION_TYPE::VIDEO},
+            {".hpp", EXTENSION_TYPE::TEXT}, //TODO: FIND ICON FOR THIS
+            {".gz", EXTENSION_TYPE::ARCHIVE},
+            {".zip", EXTENSION_TYPE::ARCHIVE},
+            {".ttf", EXTENSION_TYPE::TEXT}, //TODO: FIND ICON FOR THIS
+            {".zst", EXTENSION_TYPE::ARCHIVE}
+
+        };
+        
+
+        auto ext = extension.extension().string(); 
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    
+        auto it = mapping.find(ext);
+        
+        return it != mapping.end() ? it->second : EXTENSION_TYPE::FILE;
+    }
+    
 
     void IndexAsync(const std::string &root)
     {

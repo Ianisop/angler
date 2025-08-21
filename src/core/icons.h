@@ -1,6 +1,9 @@
 #pragma once
+#include <cstdio>
+#include <iostream>
 #include <string>
 #include <unordered_map>
+#include "core/file_indexer.h"
 #include "texture_loader.cpp"
 
 namespace Icons 
@@ -12,28 +15,17 @@ namespace Icons
     
 
 
-    enum ICON_TYPE 
-    {
-        DEFAULT,
-        FOLDER,
-        AUDIO,
-        PICTURE,
-        VIDEO,
-        TARBALL,
-        COMPRESSED
-    };
-    
     struct IconData 
     {
-        ICON_TYPE type;
         int size;
+        fileindexer::EXTENSION_TYPE extension_type;
     
-        IconData(ICON_TYPE icon_type, int icon_size)
-            : type(icon_type), size(icon_size) {}
+        IconData(int icon_size, fileindexer::EXTENSION_TYPE extension)
+            : size(icon_size), extension_type(extension) {}
     
         bool operator==(const IconData& other) const 
         {
-            return type == other.type && size == other.size;
+            return size == other.size && extension_type == other.extension_type;
         }
         
     };
@@ -46,52 +38,49 @@ namespace std
     {
         std::size_t operator()(const Icons::IconData& k) const 
         {
-            return std::hash<int>()(k.type) ^ (std::hash<int>()(k.size) << 1);
+            return std::hash<int>()(k.extension_type) ^ (std::hash<int>()(k.size) << 1);
         }
     };
 }
 
 namespace Icons {
+    
     // Icon path map
     static std::unordered_map<IconData, std::string> icons = 
     {
-        { { DEFAULT, ICON_SIZE_SMALL },  "src/core/assets/icons/16/file.png" },
-        { { DEFAULT, ICON_SIZE_MEDIUM }, "src/core/assets/icons/32/file.png" },
-        { { DEFAULT, ICON_SIZE_BIG },    "src/core/assets/icons/64/file.png" },
+        { { ICON_SIZE_SMALL, fileindexer::FILE },  "src/core/assets/icons/16/file.png" },
+        { { ICON_SIZE_MEDIUM,fileindexer::FILE  }, "src/core/assets/icons/32/file.png" },
+        { { ICON_SIZE_BIG,fileindexer::FILE  },    "src/core/assets/icons/64/file.png" },
 
-        { { FOLDER, ICON_SIZE_SMALL },   "src/core/assets/icons/16/folder.png" },
-        { { FOLDER, ICON_SIZE_MEDIUM },  "src/core/assets/icons/32/folder.png" },
-        { { FOLDER, ICON_SIZE_BIG },     "src/core/assets/icons/64/folder.png" },
+        { { ICON_SIZE_SMALL,fileindexer::DIRECTORY  },   "src/core/assets/icons/16/folder.png" },
+        { { ICON_SIZE_MEDIUM,fileindexer::DIRECTORY  },  "src/core/assets/icons/32/folder.png" },
+        { { ICON_SIZE_BIG,fileindexer::DIRECTORY  },     "src/core/assets/icons/64/folder.png" },
 
-        { { AUDIO, ICON_SIZE_SMALL },    "src/core/assets/icons/16/audio.png" },
-        { { AUDIO, ICON_SIZE_MEDIUM },   "src/core/assets/icons/32/audio.png" },
-        { { AUDIO, ICON_SIZE_BIG },      "src/core/assets/icons/64/audio.png" },
+        { { ICON_SIZE_SMALL, fileindexer::AUDIO },    "src/core/assets/icons/16/audio.png" },
+        { { ICON_SIZE_MEDIUM,fileindexer::AUDIO },   "src/core/assets/icons/32/audio.png" },
+        { { ICON_SIZE_BIG,fileindexer::AUDIO },      "src/core/assets/icons/64/audio.png" },
 
-        { { PICTURE, ICON_SIZE_SMALL },  "src/core/assets/icons/16/picture.png" },
-        { { PICTURE, ICON_SIZE_MEDIUM }, "src/core/assets/icons/32/picture.png" },
-        { { PICTURE, ICON_SIZE_BIG },    "src/core/assets/icons/64/picture.png" },
+        { { ICON_SIZE_SMALL,fileindexer::IMAGE },  "src/core/assets/icons/16/image.png" },
+        { { ICON_SIZE_MEDIUM,fileindexer::IMAGE }, "src/core/assets/icons/32/image.png" },
+        { { ICON_SIZE_BIG,fileindexer::IMAGE },    "src/core/assets/icons/64/image.png" },
+  
+        { { ICON_SIZE_SMALL,fileindexer::VIDEO },    "src/core/assets/icons/16/video.png" },
+        { { ICON_SIZE_MEDIUM,fileindexer::VIDEO  },   "src/core/assets/icons/32/video.png" },
+        { { ICON_SIZE_BIG,fileindexer::VIDEO  },      "src/core/assets/icons/64/video.png" },
 
-        { { VIDEO, ICON_SIZE_SMALL },    "src/core/assets/icons/16/video.png" },
-        { { VIDEO, ICON_SIZE_MEDIUM },   "src/core/assets/icons/32/video.png" },
-        { { VIDEO, ICON_SIZE_BIG },      "src/core/assets/icons/64/video.png" },
+        { { ICON_SIZE_SMALL,fileindexer::ARCHIVE },  "src/core/assets/icons/16/archive.png" },
+        { { ICON_SIZE_MEDIUM,fileindexer::ARCHIVE }, "src/core/assets/icons/32/archive.png" },
+        { { ICON_SIZE_BIG,fileindexer::ARCHIVE },    "src/core/assets/icons/64/archive.png" },
 
-        { { TARBALL, ICON_SIZE_SMALL },  "src/core/assets/icons/16/tarball.png" },
-        { { TARBALL, ICON_SIZE_MEDIUM }, "src/core/assets/icons/32/tarball.png" },
-        { { TARBALL, ICON_SIZE_BIG },    "src/core/assets/icons/64/tarball.png" },
 
-        { { COMPRESSED, ICON_SIZE_SMALL },  "src/core/assets/icons/16/compressed.png" },
-        { { COMPRESSED, ICON_SIZE_MEDIUM }, "src/core/assets/icons/32/compressed.png" },
-        { { COMPRESSED, ICON_SIZE_BIG },    "src/core/assets/icons/64/compressed.png" }
     };
-
-        
 
         // Texture cache 
         static std::unordered_map<IconData, GLuint> texture_cache;
 
-        GLuint FetchIconTextureByType(ICON_TYPE icon_type, int icon_size, int* out_width, int* out_height) 
+        GLuint FetchIconTextureByType(fileindexer::EXTENSION_TYPE extension, int icon_size, int* out_width, int* out_height) 
         {
-            IconData key(icon_type, icon_size);
+            IconData key(icon_size, extension);
         
             // Check cache
             if (texture_cache.find(key) != texture_cache.end()) 
@@ -102,13 +91,16 @@ namespace Icons {
             // Find filepath
             auto it = icons.find(key);
             std::string filepath;
+
+            if (!std::filesystem::exists(filepath))
+                std::cerr << "MISSING ICON FILE: " << filepath << "\n";
         
             if (it != icons.end()) 
             {
                 filepath = it->second;
             } else 
             {
-                filepath = icons[{ DEFAULT, icon_size }]; // fallback
+                filepath = icons[{icon_size, fileindexer::FILE}]; // fallback
             }
         
             // Load and cache

@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <chrono>
 #include "scoped_timer.h"
+#include "thread_pool.h"
 
 using json = nlohmann::json;
 
@@ -91,6 +92,7 @@ namespace fileindexer
         std::thread index_thread;
         std::atomic<bool> indexing{false};
         std::mutex index_mutex;
+        std::mutex result_mutex; // Used to merge thread results safely
     }
 
 
@@ -140,94 +142,133 @@ namespace fileindexer
         return std::string(buf);
     }
 
-  void IndexDirectory(
-    const std::filesystem::path &directory,
-    std::unordered_map<std::filesystem::path, IndexedFile> &files_out,
-    std::unordered_map<std::filesystem::path, IndexedDirectory> &dirs_out,
-    std::unordered_map<std::filesystem::path, IndexedFile> &files_from_disk,
-    std::unordered_map<std::filesystem::path, IndexedDirectory> &dirs_from_disk,
-    bool recursive = true // default: recursive
-  )
+    void IndexDirsChunk(
+    const std::vector<std::filesystem::directory_entry> &chunk,
+    std::unordered_map<std::filesystem::path, IndexedDirectory> &global_dirs_out,
+    const std::unordered_map<std::filesystem::path, IndexedDirectory> &dirs_from_disk)
+    {
+        std::unordered_map<std::filesystem::path, IndexedDirectory> local_out;
+        std::error_code ec;
+
+        for (const auto &entry : chunk)
+        {
+            const auto &path = entry.path();
+            if (!entry.is_directory(ec) || ec || path.filename() == ".index.zst")
+                continue;
+
+            auto cached_it = dirs_from_disk.find(path);
+            if (cached_it != dirs_from_disk.end() &&
+                entry.last_write_time() <= cached_it->second.last_modified)
+            {
+                local_out[path] = cached_it->second; // reuse
+            }
+            else
+            {
+                IndexedDirectory dir;
+                dir.name = path.filename().string();
+                dir.path = path;
+                dir.last_modified = std::filesystem::last_write_time(path, ec);
+                dir.size = GetDirectorySize(path);  // expensive
+                if (!ec) local_out[path] = std::move(dir);
+            }
+        }
+
+        std::lock_guard<std::mutex> lock(result_mutex);
+        for (auto &[k, v] : local_out)
+        {
+            global_dirs_out[k] = std::move(v);
+        }
+    }
+
+
+    void IndexDirectory(
+        const std::filesystem::path &directory,
+        std::unordered_map<std::filesystem::path, IndexedFile> &files_out,
+        std::unordered_map<std::filesystem::path, IndexedDirectory> &dirs_out,
+        std::unordered_map<std::filesystem::path, IndexedFile> &files_from_disk,
+        std::unordered_map<std::filesystem::path, IndexedDirectory> &dirs_from_disk)
     {
         MEASURE_TIME("IndexDirectory");
-
         files_out.clear();
         dirs_out.clear();
 
         std::error_code ec;
+        std::vector<std::filesystem::directory_entry> dir_entries;
 
-        auto iterator = std::filesystem::directory_iterator(directory, std::filesystem::directory_options::skip_permission_denied, ec);
-
-        if (ec)
-        {
-            std::cerr << "Error opening directory: " << directory << " - " << ec.message() << "\n";
-            return;
+        for (auto &entry : std::filesystem::directory_iterator(directory, std::filesystem::directory_options::skip_permission_denied, ec)) {
+            if (ec) continue;
+            dir_entries.push_back(entry);
         }
 
-        for (const auto &entry : iterator)
-        {
-            if (!indexing) return;
+        size_t num_threads = std::min<size_t>(std::thread::hardware_concurrency(), dir_entries.size());
+        if (num_threads == 0) num_threads = 1; // fallback
 
-            const auto &path = entry.path();
-            const std::string filename = path.filename().string();
+        ThreadPool pool(num_threads);
 
-            // Skip our index files
-            if (filename.rfind(".index", 0) == 0)
-                continue;
+        std::mutex output_mutex; // protect shared maps
 
-            ec.clear();
+        for (auto &entry : dir_entries) {
+            pool.enqueue([&, entry]() {
+                if (!indexing) return;
 
-            if (entry.is_directory(ec) && !ec)
-            {
-                auto mod_time = entry.last_write_time(ec);
-                if (ec) continue;
+                const auto &path = entry.path();
+                std::error_code local_ec;
 
-                auto it = dirs_from_disk.find(path);
+                if (entry.is_directory(local_ec) && !local_ec && path.filename() != ".index.zst") {
+                    IndexedDirectory dir;
 
-                if (it != dirs_from_disk.end() && mod_time <= it->second.last_modified)
-                {
-                    dirs_out[path] = it->second; // reuse cached
-                    continue;
+                    bool reuse_cache = false;
+                    {
+                        std::lock_guard lock(output_mutex);
+                        auto it = dirs_from_disk.find(path);
+                        if (it != dirs_from_disk.end() && entry.last_write_time() <= it->second.last_modified) {
+                            dirs_out[path] = it->second; // reuse cache
+                            reuse_cache = true;
+                        }
+                    }
+                    if (!reuse_cache) {
+                        dir.name = path.filename().string();
+                        dir.path = path;
+                        dir.size = GetDirectorySize(path);
+                        dir.last_modified = std::filesystem::last_write_time(path, local_ec);
+                        if (!local_ec) {
+                            std::lock_guard lock(output_mutex);
+                            dirs_out[path] = dir;
+                            dirs_from_disk[path] = dir;
+                        }
+                    }
                 }
-
-                IndexedDirectory dir;
-                dir.name = filename;
-                dir.path = path;
-                dir.last_modified = mod_time;
-                dir.size = GetDirectorySize(path);
-
-                dirs_out[path] = dir;
-                dirs_from_disk[path] = dir;
-            }
-            else if (entry.is_regular_file(ec) && !ec)
-            {
-                auto mod_time = entry.last_write_time(ec);
-                if (ec) continue;
-
-                auto it = files_from_disk.find(path);
-
-                if (it != files_from_disk.end() && mod_time <= it->second.last_modified)
-                {
-                    files_out[path] = it->second; // reuse cached
-                    continue;
+                else if (entry.is_regular_file(local_ec) && !local_ec) {
+                    IndexedFile file;
+                    bool reuse_cache = false;
+                    {
+                        std::lock_guard lock(output_mutex);
+                        auto it = files_from_disk.find(path);
+                        if (it != files_from_disk.end() && entry.last_write_time() <= it->second.last_modified) {
+                            files_out[path] = it->second; // reuse cache
+                            reuse_cache = true;
+                        }
+                    }
+                    if (!reuse_cache) {
+                        file.name = path.filename().string();
+                        file.path = path;
+                        file.size = std::filesystem::file_size(path, local_ec);
+                        file.extension = path.extension().string();
+                        file.extension_type = GetExtensionType(path);
+                        file.last_modified = std::filesystem::last_write_time(path, local_ec);
+                        if (!local_ec) {
+                            std::lock_guard lock(output_mutex);
+                            files_out[path] = file;
+                        }
+                    }
                 }
-
-                IndexedFile file;
-                file.name = filename;
-                file.path = path;
-                file.size = entry.file_size(ec);
-                file.extension = path.extension().string();
-                file.extension_type = GetExtensionType(path);
-                file.last_modified = mod_time;
-
-                if (!ec)
-                {
-                    files_out[path] = file;
-                    files_from_disk[path] = file;
-                }
-            }
+            });
         }
+
+        // The pool destructor waits for all tasks to finish.
     }
+
+
  
 
     EXTENSION_TYPE GetExtensionType(std::filesystem::path extension)

@@ -210,14 +210,41 @@ namespace fileindexer
             }
             else if (entry.is_regular_file(ec) && !ec)
             {
-                IndexedFile file;
-                file.name = path.filename().string();
-                file.path = path;
-                file.size = std::filesystem::file_size(path, ec);
-                file.extension = path.extension().string();
-                file.extension_type = GetExtensionType(path);
-                file.last_modified = std::filesystem::last_write_time(path, ec);
-                if (!ec) files_out[path] = std::move(file);
+                // if the dir has been cached before
+                if(files_from_disk.find(entry.path()) != files_from_disk.end())
+                {
+                    IndexedFile& file = files_from_disk[entry.path()];
+
+                    //if its not been written to since
+                    if (entry.last_write_time() <= file.last_modified)
+                    {
+                        std::cout << "already indexed: " << file.name << std::endl;
+                        if (!ec) files_out[path] = file;  // copy from the cache
+                        continue;
+                    }
+
+                    //updated
+                    else{
+                        file.name = path.filename().string();
+                        file.path = path;
+                        file.size = GetDirectorySize(path);
+                        file.last_modified = std::filesystem::last_write_time(path, ec);
+                    }
+                    if (!ec) files_out[path] = std::move(file);
+                   
+                }
+                else
+                {
+                    IndexedFile file;
+                    file.name = path.filename().string();
+                    file.path = path;
+                    file.size = std::filesystem::file_size(path, ec);
+                    file.extension = path.extension().string();
+                    file.extension_type = GetExtensionType(path);
+                    file.last_modified = std::filesystem::last_write_time(path, ec);
+                    if (!ec) files_out[path] = std::move(file);
+                }
+
             }
         
         }

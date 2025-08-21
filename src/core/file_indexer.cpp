@@ -96,7 +96,7 @@ namespace fileindexer
 
     std::uintmax_t GetDirectorySize(const std::filesystem::path &dir)
     {
-
+        MEASURE_TIME("GetDirectorySize");
         std::uintmax_t total_size = 0;
         try
         {
@@ -140,22 +140,23 @@ namespace fileindexer
         return std::string(buf);
     }
 
-    void IndexDirectory(
-        const std::filesystem::path &directory,
-        std::unordered_map<std::filesystem::path, IndexedFile> &files_out,
-        std::unordered_map<std::filesystem::path, IndexedDirectory> &dirs_out,
-        std::unordered_map<std::filesystem::path, IndexedFile> &files_from_disk,
-        std::unordered_map<std::filesystem::path, IndexedDirectory> &dirs_from_disk)
+  void IndexDirectory(
+    const std::filesystem::path &directory,
+    std::unordered_map<std::filesystem::path, IndexedFile> &files_out,
+    std::unordered_map<std::filesystem::path, IndexedDirectory> &dirs_out,
+    std::unordered_map<std::filesystem::path, IndexedFile> &files_from_disk,
+    std::unordered_map<std::filesystem::path, IndexedDirectory> &dirs_from_disk,
+    bool recursive = true // default: recursive
+  )
     {
         MEASURE_TIME("IndexDirectory");
+
         files_out.clear();
         dirs_out.clear();
 
         std::error_code ec;
-        std::filesystem::directory_iterator it(
-            directory,
-            std::filesystem::directory_options::skip_permission_denied,
-            ec);
+
+        auto iterator = std::filesystem::directory_iterator(directory, std::filesystem::directory_options::skip_permission_denied, ec);
 
         if (ec)
         {
@@ -163,92 +164,71 @@ namespace fileindexer
             return;
         }
 
-        for (const auto &entry : it)
+        for (const auto &entry : iterator)
         {
             if (!indexing) return;
 
             const auto &path = entry.path();
+            const std::string filename = path.filename().string();
+
+            // Skip our index files
+            if (filename.rfind(".index", 0) == 0)
+                continue;
+
             ec.clear();
+
             if (entry.is_directory(ec) && !ec)
             {
-                // if the dir has been cached before
-                if(dirs_from_disk.find(entry.path()) != dirs_from_disk.end())
+                auto mod_time = entry.last_write_time(ec);
+                if (ec) continue;
+
+                auto it = dirs_from_disk.find(path);
+
+                if (it != dirs_from_disk.end() && mod_time <= it->second.last_modified)
                 {
-                    IndexedDirectory& dir = dirs_from_disk[entry.path()];
-
-                    //if its not been written to since
-                    if (entry.last_write_time() <= dir.last_modified)
-                    {
-                        std::cout << "already indexed: " << dir.name << std::endl;
-                        if (!ec) dirs_out[path] = dir;  // copy from the cache
-                        continue;
-                    }
-
-                    //updated
-                    else{
-                        dir.name = path.filename().string();
-                        dir.path = path;
-                        dir.size = GetDirectorySize(path);
-                        dir.last_modified = std::filesystem::last_write_time(path, ec);
-                    }
-                    if (!ec) dirs_out[path] = std::move(dir);
-                   
+                    dirs_out[path] = it->second; // reuse cached
+                    continue;
                 }
-                //not cached
-                else {
-                    IndexedDirectory dir;
-                    dir.name = path.filename().string();
-                    dir.path = path;
-                    dir.size = GetDirectorySize(path);
-                    dir.last_modified = std::filesystem::last_write_time(path, ec);
-                    if (!ec) {
-                        dirs_out[path] = dir;
-                        dirs_from_disk[path] = dir;  // add to cache
-                    }
-                }
-                
+
+                IndexedDirectory dir;
+                dir.name = filename;
+                dir.path = path;
+                dir.last_modified = mod_time;
+                dir.size = GetDirectorySize(path);
+
+                dirs_out[path] = dir;
+                dirs_from_disk[path] = dir;
             }
             else if (entry.is_regular_file(ec) && !ec)
             {
-                // if the dir has been cached before
-                if(files_from_disk.find(entry.path()) != files_from_disk.end())
-                {
-                    IndexedFile& file = files_from_disk[entry.path()];
+                auto mod_time = entry.last_write_time(ec);
+                if (ec) continue;
 
-                    //if its not been written to since
-                    if (entry.last_write_time() <= file.last_modified)
-                    {
-                        std::cout << "already indexed: " << file.name << std::endl;
-                        if (!ec) files_out[path] = file;  // copy from the cache
-                        continue;
-                    }
+                auto it = files_from_disk.find(path);
 
-                    //updated
-                    else{
-                        file.name = path.filename().string();
-                        file.path = path;
-                        file.size = GetDirectorySize(path);
-                        file.last_modified = std::filesystem::last_write_time(path, ec);
-                    }
-                    if (!ec) files_out[path] = std::move(file);
-                   
-                }
-                else
+                if (it != files_from_disk.end() && mod_time <= it->second.last_modified)
                 {
-                    IndexedFile file;
-                    file.name = path.filename().string();
-                    file.path = path;
-                    file.size = std::filesystem::file_size(path, ec);
-                    file.extension = path.extension().string();
-                    file.extension_type = GetExtensionType(path);
-                    file.last_modified = std::filesystem::last_write_time(path, ec);
-                    if (!ec) files_out[path] = std::move(file);
+                    files_out[path] = it->second; // reuse cached
+                    continue;
                 }
 
+                IndexedFile file;
+                file.name = filename;
+                file.path = path;
+                file.size = entry.file_size(ec);
+                file.extension = path.extension().string();
+                file.extension_type = GetExtensionType(path);
+                file.last_modified = mod_time;
+
+                if (!ec)
+                {
+                    files_out[path] = file;
+                    files_from_disk[path] = file;
+                }
             }
-        
         }
-    }   
+    }
+ 
 
     EXTENSION_TYPE GetExtensionType(std::filesystem::path extension)
     {

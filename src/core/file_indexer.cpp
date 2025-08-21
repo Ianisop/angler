@@ -176,14 +176,15 @@ namespace fileindexer
                 {
                     IndexedDirectory& dir = dirs_from_disk[entry.path()];
 
-                    //if its been written to since
+                    //if its not been written to since
                     if (entry.last_write_time() <= dir.last_modified)
                     {
                         std::cout << "already indexed: " << dir.name << std::endl;
+                        if (!ec) dirs_out[path] = dir;  // copy from the cache
                         continue;
                     }
 
-                    //not cached
+                    //updated
                     else{
                         dir.name = path.filename().string();
                         dir.path = path;
@@ -194,14 +195,18 @@ namespace fileindexer
                    
                 }
                 //not cached
-                else{
+                else {
                     IndexedDirectory dir;
                     dir.name = path.filename().string();
                     dir.path = path;
                     dir.size = GetDirectorySize(path);
                     dir.last_modified = std::filesystem::last_write_time(path, ec);
-                    if (!ec) dirs_out[path] = std::move(dir);
+                    if (!ec) {
+                        dirs_out[path] = dir;
+                        dirs_from_disk[path] = dir;  // add to cache
+                    }
                 }
+                
             }
             else if (entry.is_regular_file(ec) && !ec)
             {
@@ -478,6 +483,8 @@ namespace fileindexer
 
         std::unordered_map<std::filesystem::path, IndexedFile> files_from_disk;
         std::unordered_map<std::filesystem::path, IndexedDirectory> dirs_from_disk;
+        dirs_from_disk.clear();
+        files_from_disk.clear();
         LoadFromFile(path, dirs_from_disk, files_from_disk);
 
         std::unordered_map<std::filesystem::path, IndexedFile> files;

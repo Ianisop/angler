@@ -96,6 +96,7 @@ namespace fileindexer
 
     std::uintmax_t GetDirectorySize(const std::filesystem::path &dir)
     {
+
         std::uintmax_t total_size = 0;
         try
         {
@@ -142,7 +143,9 @@ namespace fileindexer
     void IndexDirectory(
         const std::filesystem::path &directory,
         std::unordered_map<std::filesystem::path, IndexedFile> &files_out,
-        std::unordered_map<std::filesystem::path, IndexedDirectory> &dirs_out)
+        std::unordered_map<std::filesystem::path, IndexedDirectory> &dirs_out,
+        std::unordered_map<std::filesystem::path, IndexedFile> &files_from_disk,
+        std::unordered_map<std::filesystem::path, IndexedDirectory> &dirs_from_disk)
     {
         MEASURE_TIME("IndexDirectory");
         files_out.clear();
@@ -166,15 +169,39 @@ namespace fileindexer
 
             const auto &path = entry.path();
             ec.clear();
-
             if (entry.is_directory(ec) && !ec)
             {
-                IndexedDirectory dir;
-                dir.name = path.filename().string();
-                dir.path = path;
-                dir.size = GetDirectorySize(path);
-                dir.last_modified = std::filesystem::last_write_time(path, ec);
-                if (!ec) dirs_out[path] = std::move(dir);
+                // if the dir has been cached before
+                if(dirs_from_disk.find(entry.path()) != dirs_from_disk.end())
+                {
+                    IndexedDirectory& dir = dirs_from_disk[entry.path()];
+
+                    //if its been written to since
+                    if (entry.last_write_time() <= dir.last_modified)
+                    {
+                        std::cout << "already indexed: " << dir.name << std::endl;
+                        continue;
+                    }
+
+                    //not cached
+                    else{
+                        dir.name = path.filename().string();
+                        dir.path = path;
+                        dir.size = GetDirectorySize(path);
+                        dir.last_modified = std::filesystem::last_write_time(path, ec);
+                    }
+                    if (!ec) dirs_out[path] = std::move(dir);
+                   
+                }
+                //not cached
+                else{
+                    IndexedDirectory dir;
+                    dir.name = path.filename().string();
+                    dir.path = path;
+                    dir.size = GetDirectorySize(path);
+                    dir.last_modified = std::filesystem::last_write_time(path, ec);
+                    if (!ec) dirs_out[path] = std::move(dir);
+                }
             }
             else if (entry.is_regular_file(ec) && !ec)
             {
@@ -187,8 +214,9 @@ namespace fileindexer
                 file.last_modified = std::filesystem::last_write_time(path, ec);
                 if (!ec) files_out[path] = std::move(file);
             }
+        
         }
-    }
+    }   
 
     EXTENSION_TYPE GetExtensionType(std::filesystem::path extension)
     {
@@ -225,21 +253,6 @@ namespace fileindexer
         return it != mapping.end() ? it->second : EXTENSION_TYPE::FILE;
     }
     
-
-    void IndexAsync(const std::string &root)
-    {
-        IndexingGuard guard(indexing);
-        std::unordered_map<std::filesystem::path, IndexedFile> temp_files;
-        std::unordered_map<std::filesystem::path, IndexedDirectory> temp_dirs;
-
-        IndexDirectory(root, temp_files, temp_dirs);
-
-        {
-            std::lock_guard<std::mutex> lock(index_mutex);
-            file_index = std::move(temp_files);
-            dir_index = std::move(temp_dirs);
-        }
-    }
 
    
     bool IsIndexing()
@@ -470,7 +483,7 @@ namespace fileindexer
         std::unordered_map<std::filesystem::path, IndexedFile> files;
         std::unordered_map<std::filesystem::path, IndexedDirectory> dirs;
 
-        IndexDirectory(path, files, dirs);
+        IndexDirectory(path, files, dirs,files_from_disk,dirs_from_disk);
 
         {
             std::lock_guard<std::mutex> lock(index_mutex);
@@ -505,7 +518,7 @@ namespace fileindexer
 
         index_thread = std::thread([directory]()
         {
-            IndexAsync(directory);
+            
         });
     }
 }

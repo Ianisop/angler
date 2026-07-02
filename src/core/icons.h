@@ -48,29 +48,29 @@ namespace Icons {
     // Icon path map
     static std::unordered_map<IconData, std::string> icons = 
     {
-        { { ICON_SIZE_SMALL, fileindexer::FILE },  "src/core/assets/icons/16/file.png" },
-        { { ICON_SIZE_MEDIUM,fileindexer::FILE  }, "src/core/assets/icons/32/file.png" },
-        { { ICON_SIZE_BIG,fileindexer::FILE  },    "src/core/assets/icons/64/file.png" },
+        { { ICON_SIZE_SMALL, fileindexer::FILE },  "assets/icons/16/file.png" },
+        { { ICON_SIZE_MEDIUM,fileindexer::FILE  }, "assets/icons/32/file.png" },
+        { { ICON_SIZE_BIG,fileindexer::FILE  },    "assets/icons/64/file.png" },
 
-        { { ICON_SIZE_SMALL,fileindexer::DIRECTORY  },   "src/core/assets/icons/16/folder.png" },
-        { { ICON_SIZE_MEDIUM,fileindexer::DIRECTORY  },  "src/core/assets/icons/32/folder.png" },
-        { { ICON_SIZE_BIG,fileindexer::DIRECTORY  },     "src/core/assets/icons/64/folder.png" },
+        { { ICON_SIZE_SMALL,fileindexer::DIRECTORY  },   "assets/icons/16/folder.png" },
+        { { ICON_SIZE_MEDIUM,fileindexer::DIRECTORY  },  "assets/icons/32/folder.png" },
+        { { ICON_SIZE_BIG,fileindexer::DIRECTORY  },     "assets/icons/64/folder.png" },
 
-        { { ICON_SIZE_SMALL, fileindexer::AUDIO },    "src/core/assets/icons/16/audio.png" },
-        { { ICON_SIZE_MEDIUM,fileindexer::AUDIO },   "src/core/assets/icons/32/audio.png" },
-        { { ICON_SIZE_BIG,fileindexer::AUDIO },      "src/core/assets/icons/64/audio.png" },
+        { { ICON_SIZE_SMALL, fileindexer::AUDIO },    "assets/icons/16/audio.png" },
+        { { ICON_SIZE_MEDIUM,fileindexer::AUDIO },   "assets/icons/32/audio.png" },
+        { { ICON_SIZE_BIG,fileindexer::AUDIO },      "assets/icons/64/audio.png" },
 
-        { { ICON_SIZE_SMALL,fileindexer::IMAGE },  "src/core/assets/icons/16/image.png" },
-        { { ICON_SIZE_MEDIUM,fileindexer::IMAGE }, "src/core/assets/icons/32/image.png" },
-        { { ICON_SIZE_BIG,fileindexer::IMAGE },    "src/core/assets/icons/64/image.png" },
+        { { ICON_SIZE_SMALL,fileindexer::IMAGE },  "assets/icons/16/image.png" },
+        { { ICON_SIZE_MEDIUM,fileindexer::IMAGE }, "assets/icons/32/image.png" },
+        { { ICON_SIZE_BIG,fileindexer::IMAGE },    "assets/icons/64/image.png" },
   
-        { { ICON_SIZE_SMALL,fileindexer::VIDEO },    "src/core/assets/icons/16/video.png" },
-        { { ICON_SIZE_MEDIUM,fileindexer::VIDEO  },   "src/core/assets/icons/32/video.png" },
-        { { ICON_SIZE_BIG,fileindexer::VIDEO  },      "src/core/assets/icons/64/video.png" },
+        { { ICON_SIZE_SMALL,fileindexer::VIDEO },    "assets/icons/16/video.png" },
+        { { ICON_SIZE_MEDIUM,fileindexer::VIDEO  },   "assets/icons/32/video.png" },
+        { { ICON_SIZE_BIG,fileindexer::VIDEO  },      "assets/icons/64/video.png" },
 
-        { { ICON_SIZE_SMALL,fileindexer::ARCHIVE },  "src/core/assets/icons/16/archive.png" },
-        { { ICON_SIZE_MEDIUM,fileindexer::ARCHIVE }, "src/core/assets/icons/32/archive.png" },
-        { { ICON_SIZE_BIG,fileindexer::ARCHIVE },    "src/core/assets/icons/64/archive.png" },
+        { { ICON_SIZE_SMALL,fileindexer::ARCHIVE },  "assets/icons/16/archive.png" },
+        { { ICON_SIZE_MEDIUM,fileindexer::ARCHIVE }, "assets/icons/32/archive.png" },
+        { { ICON_SIZE_BIG,fileindexer::ARCHIVE },    "assets/icons/64/archive.png" },
 
 
     };

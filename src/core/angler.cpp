@@ -4,6 +4,9 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
+#define NOMINMAX
+#include <Windows.h>
+
 #include "angler_widgets.h"
 #include "style_manager.cpp"
 #include "icons.h"
@@ -192,7 +195,7 @@ void RunAnglerWidgets()
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    if (!scale_loaded && !LoadStyleFromScale("src/core/assets/my_skin.scale"))
+    if (!scale_loaded && !LoadStyleFromScale("assets/my_skin.scale"))
     {
         printf("Failed to load style\n");
     }
@@ -547,7 +550,7 @@ int main()
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
 
-    ImFont* mainFont = io.Fonts->AddFontFromFileTTF("src/core/assets/karla.ttf", FONT_SIZE);
+    ImFont* mainFont = io.Fonts->AddFontFromFileTTF("assets/karla.ttf", FONT_SIZE);
     ImGui::PushFont(io.Fonts->Fonts[0]);
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");

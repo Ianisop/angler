@@ -16,6 +16,16 @@ add_library(glad STATIC
 target_include_directories(glad PUBLIC src/lib/glad)
 
 # -----------------------------------------------------------------------------
+# GLFW (MOVED UP: Must be declared before ImGui)
+# -----------------------------------------------------------------------------
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+
+add_subdirectory(src/lib/glfw)
+
+# -----------------------------------------------------------------------------
 # ImGui library
 # -----------------------------------------------------------------------------
 set(IMGUI_SRC
@@ -27,7 +37,12 @@ set(IMGUI_SRC
     src/lib/imgui/imgui_impl_opengl3.cpp
 )
 add_library(imgui STATIC ${IMGUI_SRC})
-target_include_directories(imgui PUBLIC src/lib/imgui)
+
+# FIXED: Added GLFW include directory so imgui_impl_glfw.cpp can find <GLFW/glfw3.h>
+target_include_directories(imgui PUBLIC 
+    src/lib/imgui
+    src/lib/glfw/include
+)
 
 # -----------------------------------------------------------------------------
 # Zstd library
@@ -47,16 +62,6 @@ endif()
 
 add_library(zstd STATIC ${ZSTD_C_SOURCES} ${ZSTD_ASM_SOURCES})
 target_include_directories(zstd PUBLIC src/lib/zstd/include)
-
-# -----------------------------------------------------------------------------
-# GLFW 
-# -----------------------------------------------------------------------------
-set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
-
-add_subdirectory(src/lib/glfw)
 
 # -----------------------------------------------------------------------------
 # Find OpenGL

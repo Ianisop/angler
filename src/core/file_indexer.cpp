@@ -7,13 +7,12 @@
 #include <chrono>
 #include <sys/stat.h>
 #include <unordered_map>
-#include <chrono>
 #include "scoped_timer.h"
 
 using json = nlohmann::json;
 
 #define COMPRESSION_LEVEL 1
-#define DEBUG_MEASURE_TIMES 1 // Set to 1 to enable timing debug messages
+#define DEBUG_MEASURE_TIMES 1
 
 #ifdef DEBUG_MEASURE_TIMES
 #define MEASURE_TIME(label) ScopedTimer timer__(label)
@@ -27,12 +26,13 @@ void fileindexer::IndexedFile::to_json(json &j) const
 {
     j = json{
         {"name", name},
-        {"path", path},
+        {"path", path.string()},
         {"size", size},
         {"extension", extension},
         {"last_modified", std::chrono::duration_cast<std::chrono::seconds>(
                               last_modified.time_since_epoch())
-                              .count()}};
+                              .count()}
+    };
 }
 
 void fileindexer::IndexedFile::from_json(const json &j)
@@ -49,11 +49,12 @@ void fileindexer::IndexedDirectory::to_json(json &j) const
 {
     j = json{
         {"name", name},
-        {"path", path},
+        {"path", path.string()},
         {"size", size},
         {"last_modified", std::chrono::duration_cast<std::chrono::seconds>(
                               last_modified.time_since_epoch())
-                              .count()}};
+                              .count()}
+    };
 }
 
 void fileindexer::IndexedDirectory::from_json(const json &j)
@@ -92,7 +93,6 @@ namespace fileindexer
         std::atomic<bool> indexing{false};
         std::mutex index_mutex;
     }
-
 
     std::uintmax_t GetDirectorySize(const std::filesystem::path &dir)
     {
@@ -140,14 +140,13 @@ namespace fileindexer
         return std::string(buf);
     }
 
-  void IndexDirectory(
-    const std::filesystem::path &directory,
-    std::unordered_map<std::filesystem::path, IndexedFile> &files_out,
-    std::unordered_map<std::filesystem::path, IndexedDirectory> &dirs_out,
-    std::unordered_map<std::filesystem::path, IndexedFile> &files_from_disk,
-    std::unordered_map<std::filesystem::path, IndexedDirectory> &dirs_from_disk,
-    bool recursive = true // default: recursive
-  )
+    void IndexDirectory(
+        const std::filesystem::path &directory,
+        std::unordered_map<std::filesystem::path, IndexedFile> &files_out,
+        std::unordered_map<std::filesystem::path, IndexedDirectory> &dirs_out,
+        std::unordered_map<std::filesystem::path, IndexedFile> &files_from_disk,
+        std::unordered_map<std::filesystem::path, IndexedDirectory> &dirs_from_disk,
+        bool recursive = true)
     {
         MEASURE_TIME("IndexDirectory");
 
@@ -198,6 +197,15 @@ namespace fileindexer
 
                 dirs_out[path] = dir;
                 dirs_from_disk[path] = dir;
+
+                if (recursive)
+                {
+                    std::unordered_map<std::filesystem::path, IndexedFile> sub_files;
+                    std::unordered_map<std::filesystem::path, IndexedDirectory> sub_dirs;
+                    IndexDirectory(path, sub_files, sub_dirs, files_from_disk, dirs_from_disk, recursive);
+                    files_out.insert(sub_files.begin(), sub_files.end());
+                    dirs_out.insert(sub_dirs.begin(), sub_dirs.end());
+                }
             }
             else if (entry.is_regular_file(ec) && !ec)
             {
@@ -228,17 +236,17 @@ namespace fileindexer
             }
         }
     }
- 
 
-    EXTENSION_TYPE GetExtensionType(std::filesystem::path extension)
+    EXTENSION_TYPE GetExtensionType(std::filesystem::path path)
     {
         static const std::unordered_map<std::string, EXTENSION_TYPE> mapping = {
-            {".txt",EXTENSION_TYPE::TEXT},
-            {".doc",EXTENSION_TYPE::DOC},
-            {".docx",EXTENSION_TYPE::DOC},  
-            {".pdf",EXTENSION_TYPE::PDF},
+            {".txt", EXTENSION_TYPE::TEXT},
+            {".doc", EXTENSION_TYPE::DOC},
+            {".docx", EXTENSION_TYPE::DOC},  
+            {".pdf", EXTENSION_TYPE::PDF},
             {".png", EXTENSION_TYPE::IMAGE},
             {".jpg", EXTENSION_TYPE::IMAGE},
+            {".jpeg", EXTENSION_TYPE::IMAGE},
             {".bmp", EXTENSION_TYPE::IMAGE},
             {".mp3", EXTENSION_TYPE::AUDIO},
             {".wav", EXTENSION_TYPE::AUDIO},
@@ -248,37 +256,29 @@ namespace fileindexer
             {".mkv", EXTENSION_TYPE::VIDEO},
             {".mov", EXTENSION_TYPE::VIDEO},
             {".avi", EXTENSION_TYPE::VIDEO},
-            {".hpp", EXTENSION_TYPE::TEXT}, //TODO: FIND ICON FOR THIS
+            {".hpp", EXTENSION_TYPE::TEXT},
             {".gz", EXTENSION_TYPE::ARCHIVE},
             {".zip", EXTENSION_TYPE::ARCHIVE},
-            {".ttf", EXTENSION_TYPE::TEXT}, //TODO: FIND ICON FOR THIS
+            {".ttf", EXTENSION_TYPE::TEXT},
             {".zst", EXTENSION_TYPE::ARCHIVE}
-
         };
         
-
-        auto ext = extension.extension().string(); 
+        auto ext = path.extension().string(); 
         std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     
         auto it = mapping.find(ext);
-        
         return it != mapping.end() ? it->second : EXTENSION_TYPE::FILE;
     }
-    
 
-   
     bool IsIndexing()
     {
         return indexing;
     }
 
-    bool LoadFromFile(const std::string &path,
-                      std::unordered_map<std::filesystem::path, IndexedDirectory> &dirs_out,
-                      std::unordered_map<std::filesystem::path, IndexedFile> &files_out)
+    bool LoadFromFile(const std::string &path)
     {
-        dirs_out.clear();
-        files_out.clear();
-
+        std::lock_guard<std::mutex> lock(index_mutex);
+        
         const std::string jsonFilePath = path + "/.index";
         std::ifstream in(jsonFilePath, std::ios::binary);
 
@@ -287,17 +287,20 @@ namespace fileindexer
             try
             {
                 json j = json::parse(content);
+                file_index.clear();
+                dir_index.clear();
+                
                 for (const auto &f : j["files"])
                 {
                     IndexedFile file;
                     file.from_json(f);
-                    files_out[file.path] = std::move(file);
+                    file_index[file.path] = std::move(file);
                 }
                 for (const auto &d : j["dirs"])
                 {
                     IndexedDirectory dir;
                     dir.from_json(d);
-                    dirs_out[dir.path] = std::move(dir);
+                    dir_index[dir.path] = std::move(dir);
                 }
                 return true;
             }
@@ -344,7 +347,7 @@ namespace fileindexer
         return parse_and_fill(std::string(decompressed.data(), decompressed.data() + dSize));
     }
 
-    std::vector<IndexedFile> Search(const std::string &query, bool include_dirs)
+    std::vector<IndexedFile> SearchFiles(const std::string &query)
     {
         std::vector<IndexedFile> results;
         std::lock_guard<std::mutex> lock(index_mutex);
@@ -369,22 +372,34 @@ namespace fileindexer
             }
         }
 
-        if (include_dirs)
+        return results;
+    }
+
+    std::vector<IndexedDirectory> SearchDirectories(const std::string &query)
+    {
+        std::vector<IndexedDirectory> results;
+        std::lock_guard<std::mutex> lock(index_mutex);
+
+        auto to_lower = [](const std::string &s)
         {
-            for (const auto &[_, dir] : dir_index)
+            std::string lower;
+            lower.reserve(s.size());
+            std::transform(s.begin(), s.end(), std::back_inserter(lower),
+                           [](unsigned char c)
+                           { return static_cast<char>(std::tolower(c)); });
+            return lower;
+        };
+
+        std::string lower_query = to_lower(query);
+
+        for (const auto &[_, dir] : dir_index)
+        {
+            if (to_lower(dir.name).find(lower_query) != std::string::npos)
             {
-                if (to_lower(dir.name).find(lower_query) != std::string::npos)
-                {
-                    IndexedFile f;
-                    f.name = dir.name;
-                    f.path = dir.path;
-                    f.size = dir.size;
-                    f.extension = "";
-                    f.last_modified = dir.last_modified;
-                    results.push_back(std::move(f));
-                }
+                results.push_back(dir);
             }
         }
+
         return results;
     }
 
@@ -484,30 +499,80 @@ namespace fileindexer
 
     std::tuple<std::unordered_map<std::filesystem::path, IndexedDirectory>,
                std::unordered_map<std::filesystem::path, IndexedFile>>
-    ShowFilesAndDirsContinous(const std::string &path)
+    ShowFilesAndDirsContinuous(const std::filesystem::path &path)
     {
+        std::cout << "running this motherfucker rn: " <<  path << std::endl;
         IndexingGuard guard(indexing);
 
         std::unordered_map<std::filesystem::path, IndexedFile> files_from_disk;
         std::unordered_map<std::filesystem::path, IndexedDirectory> dirs_from_disk;
-        dirs_from_disk.clear();
-        files_from_disk.clear();
-        LoadFromFile(path, dirs_from_disk, files_from_disk);
+        
+        // Load existing index if available
+        std::lock_guard<std::mutex> lock(index_mutex);
+        for (const auto& [p, f] : file_index) {
+            files_from_disk[p] = f;
+        }
+        for (const auto& [p, d] : dir_index) {
+            dirs_from_disk[p] = d;
+        }
 
         std::unordered_map<std::filesystem::path, IndexedFile> files;
         std::unordered_map<std::filesystem::path, IndexedDirectory> dirs;
 
-        IndexDirectory(path, files, dirs,files_from_disk,dirs_from_disk);
+        IndexDirectory(path, files, dirs, files_from_disk, dirs_from_disk);
 
-        {
-            std::lock_guard<std::mutex> lock(index_mutex);
-            file_index = std::move(files);
-            dir_index = std::move(dirs);
-        }
-
-        SaveToFile(path);
+        // Update global index
+        file_index = std::move(files);
+        dir_index = std::move(dirs);
 
         return {dir_index, file_index};
+    }
+
+    std::tuple<std::vector<IndexedDirectory>, std::vector<IndexedFile>> 
+    ShowFilesAndDirsInTab(const std::string& path)
+    {
+        std::vector<IndexedDirectory> dirs;
+        std::vector<IndexedFile> files;
+        
+        std::lock_guard<std::mutex> lock(index_mutex);
+        
+        for (const auto& [p, d] : dir_index) {
+            if (p.parent_path() == path) {
+                dirs.push_back(d);
+            }
+        }
+        
+        for (const auto& [p, f] : file_index) {
+            if (p.parent_path() == path) {
+                files.push_back(f);
+            }
+        }
+        
+        return {dirs, files};
+    }
+
+    std::vector<IndexedFile> ShowFilesInTab(const std::string& path)
+    {
+        std::vector<IndexedFile> files;
+        std::lock_guard<std::mutex> lock(index_mutex);
+        
+        for (const auto& [p, f] : file_index) {
+            if (p.parent_path() == path) {
+                files.push_back(f);
+            }
+        }
+        
+        return files;
+    }
+
+    const std::unordered_map<std::filesystem::path, IndexedFile>& GetFileIndex()
+    {
+        return file_index;
+    }
+
+    const std::unordered_map<std::filesystem::path, IndexedDirectory>& GetDirectoryIndex()
+    {
+        return dir_index;
     }
 
     void Shutdown()
@@ -532,7 +597,34 @@ namespace fileindexer
 
         index_thread = std::thread([directory]()
         {
+            IndexingGuard guard(indexing);
             
+            std::unordered_map<std::filesystem::path, IndexedFile> files_from_disk;
+            std::unordered_map<std::filesystem::path, IndexedDirectory> dirs_from_disk;
+            
+            // Try to load existing index
+            {
+                std::lock_guard<std::mutex> lock(index_mutex);
+                for (const auto& [p, f] : file_index) {
+                    files_from_disk[p] = f;
+                }
+                for (const auto& [p, d] : dir_index) {
+                    dirs_from_disk[p] = d;
+                }
+            }
+            
+            std::unordered_map<std::filesystem::path, IndexedFile> files;
+            std::unordered_map<std::filesystem::path, IndexedDirectory> dirs;
+
+            IndexDirectory(directory, files, dirs, files_from_disk, dirs_from_disk);
+
+            {
+                std::lock_guard<std::mutex> lock(index_mutex);
+                file_index = std::move(files);
+                dir_index = std::move(dirs);
+            }
+
+            SaveToFile(directory);
         });
     }
 }

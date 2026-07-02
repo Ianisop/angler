@@ -39,7 +39,7 @@ bool show_search_input = false;
 bool is_searching = false;
 bool search_ready = false;
 std::thread indexing_thread;
-std::string toolbar_title_path = "";
+std::filesystem::path toolbar_title_path = "";
 
 // -- SIDEBAR --
 std::vector<Tab> tabs;
@@ -111,7 +111,7 @@ void SetCurrentTab(int index)
     current_tab_index = index;
     current_tab = &tabs[current_tab_index];
 
-    std::tie(results_dirs, results_files) = fileindexer::ShowFilesAndDirsContinous(current_tab->path);
+    std::tie(results_dirs, results_files) = fileindexer::ShowFilesAndDirsContinuous(current_tab->path.generic_string());
     toolbar_title_path = current_tab->path.string();
     search_ready = true;
 }
@@ -264,12 +264,12 @@ void RunAnglerWidgets()
     std::string window_title = "";
     if (current_tab)
     {
-        window_title = "Angler: " + toolbar_title_path;
+        window_title = "Angler: " + toolbar_title_path.string();
         
     }
     else
     {
-        window_title = "Angler";
+        window_title = "Angler";    
         toolbar_title_path = "";
     }
     ImGui::Text("%s", window_title.c_str());
@@ -357,7 +357,7 @@ void RunAnglerWidgets()
     if (pending_unpin >= 0 && pending_unpin < static_cast<int>(tabs.size()))
     {
         const auto tab_to_remove = tabs[pending_unpin].path;
-        AnglerFileIO::RemoveTabFromFile("cache.angler", tab_to_remove);
+        AnglerFileIO::RemoveTabFromFile("cache.angler", tab_to_remove.generic_string());
 
         tabs.erase(tabs.begin() + pending_unpin);
 
@@ -375,8 +375,7 @@ void RunAnglerWidgets()
             current_tab = &tabs[current_tab_index];
 
             // refresh the right pane to reflect the new current tab
-            std::tie(results_dirs, results_files) =
-                fileindexer::ShowFilesAndDirsContinous(current_tab->path);
+            std::tie(results_dirs, results_files) = fileindexer::ShowFilesAndDirsContinuous(current_tab->path);
             search_ready = true;
         }
     }
@@ -441,7 +440,7 @@ void RunAnglerWidgets()
             {
                 if (ImGui::MenuItem("Pin Tab"))
                 {
-                    Tab new_tab(value.name, value.path);
+                    Tab new_tab(value.name, value.path.string());
                     tabs.push_back(new_tab);
                     AnglerFileIO::SaveTabsToFile("cache.angler");
                     current_tab_index = (int)tabs.size() - 1;
@@ -464,8 +463,7 @@ void RunAnglerWidgets()
         // Apply the mutation safely *after* iteration
         if (pending_change_dir)
         {
-            std::tie(results_dirs, results_files) =
-                fileindexer::ShowFilesAndDirsContinous(*pending_change_dir);
+			std::tie(results_dirs, results_files) = fileindexer::ShowFilesAndDirsContinuous(pending_change_dir->generic_string());
             search_ready = true;
         }
         

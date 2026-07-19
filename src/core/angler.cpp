@@ -31,8 +31,10 @@ GLFWwindow* window;
 static int platform;
 int pending_unpin = -1;
 int display_w, display_h;
-static bool dragging = false;
-static ImVec2 drag_offset;
+bool is_dragging = false;
+ImVec2 drag_start_mouse_pos;
+ImVec2 drag_start_window_pos;
+bool was_hovering_toolbar = false;
 int FONT_SIZE = 18; // global font size
 bool scale_loaded = false; // tracks if a theme has been loaded
 static char search_buf[256] = "";      // Input buffer for search query
@@ -118,13 +120,8 @@ void SetCurrentTab(int index)
     toolbar_title_path = current_tab->path.string();
     search_ready = true;
 }
-
-void ClampWindowToMonitor(GLFWwindow* window, float& pos_x, float& pos_y)
+void ClampWindowToMonitor(GLFWwindow* window, int& pos_x, int& pos_y)
 {
-    // Get window position
-    int win_x, win_y;
-    glfwGetWindowPos(window, &win_x, &win_y);
-
     // Get window size
     int win_width, win_height;
     glfwGetWindowSize(window, &win_width, &win_height);
@@ -144,9 +141,12 @@ void ClampWindowToMonitor(GLFWwindow* window, float& pos_x, float& pos_y)
         int mon_width = mode->width;
         int mon_height = mode->height;
 
-        // Simple overlap check: is window inside monitor bounds at all
-        if (win_x + win_width > mon_x && win_x < mon_x + mon_width &&
-            win_y + win_height > mon_y && win_y < mon_y + mon_height)
+        // Check if window center is inside monitor
+        int win_center_x = pos_x + win_width / 2;
+        int win_center_y = pos_y + win_height / 2;
+
+        if (win_center_x >= mon_x && win_center_x < mon_x + mon_width &&
+            win_center_y >= mon_y && win_center_y < mon_y + mon_height)
         {
             targetMonitor = monitors[i];
             break;
@@ -164,12 +164,79 @@ void ClampWindowToMonitor(GLFWwindow* window, float& pos_x, float& pos_y)
     int mon_height = mode->height;
 
     // Clamp window position to monitor
-    pos_x = std::clamp(pos_x, (float)mon_x, (float)(mon_x + mon_width - win_width));
-    pos_y = std::clamp(pos_y, (float)mon_y, (float)(mon_y + mon_height - win_height));
-
-    // Apply position
-    glfwSetWindowPos(window, (int)pos_x* window_move_multiplier, (int)pos_y* window_move_multiplier);
+    pos_x = std::clamp(pos_x, mon_x, mon_x + mon_width - win_width);
+    pos_y = std::clamp(pos_y, mon_y, mon_y + mon_height - win_height);
 }
+
+void HandleWindowDragging()
+{
+    if (platform != GLFW_PLATFORM_WAYLAND)
+    {
+        ImGuiIO& io = ImGui::GetIO();
+
+        // Get ImGui window position and size
+        ImVec2 window_pos = ImGui::GetWindowPos();
+        ImVec2 window_size = ImGui::GetWindowSize();
+
+        // Check if mouse is over the toolbar
+        bool mouse_in_toolbar = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup) ||
+            (io.MousePos.x >= window_pos.x && io.MousePos.x <= window_pos.x + window_size.x &&
+                io.MousePos.y >= window_pos.y && io.MousePos.y <= window_pos.y + window_size.y);
+
+        // Show resize cursor when hovering toolbar
+        if (mouse_in_toolbar && !is_dragging)
+        {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+        }
+
+        // Start dragging
+        if (!is_dragging && mouse_in_toolbar && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        {
+            is_dragging = true;
+
+            // Store the offset from mouse to window origin
+            int wx, wy;
+            glfwGetWindowPos(window, &wx, &wy);
+            drag_start_mouse_pos = ImVec2(io.MousePos.x - wx, io.MousePos.y - wy);
+
+            // Set cursor
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+        }
+
+        // Handle dragging
+        if (is_dragging)
+        {
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
+            {
+                // Force cursor to resize during drag
+                ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+
+                // Calculate window position based on mouse position minus offset
+                int new_x = (int)(io.MousePos.x - drag_start_mouse_pos.x);
+                int new_y = (int)(io.MousePos.y - drag_start_mouse_pos.y);
+
+                // Clamp and apply
+                int clamped_x = new_x;
+                int clamped_y = new_y;
+                ClampWindowToMonitor(window, clamped_x, clamped_y);
+                glfwSetWindowPos(window, clamped_x, clamped_y);
+            }
+            else
+            {
+                // Mouse released - end dragging
+                is_dragging = false;
+                ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
+
+                // Update pos variable to match GLFW position
+                int wx, wy;
+                glfwGetWindowPos(window, &wx, &wy);
+                pos.x = (float)wx / window_move_multiplier;
+                pos.y = (float)wy / window_move_multiplier;
+            }
+        }
+    }
+}
+
 
 void HandleWindowMovingByKey()
 {
@@ -179,7 +246,10 @@ void HandleWindowMovingByKey()
     if (ImGui::IsKeyDown(ImGuiKey_DownArrow))  pos.y += 1;
     //std::cout << pos.x << ":x y: " << pos.y << std::endl;
 
-    ClampWindowToMonitor(window,pos.x,pos.y);
+	int pos_x = pos.x;
+	int pos_y = pos.y;
+
+    ClampWindowToMonitor(window, pos_x, pos_y);
 
     //glfwSetWindowPos(window, pos.x * window_move_multiplier, pos.y * window_move_multiplier);
 }
@@ -214,53 +284,13 @@ void RunAnglerWidgets()
                                      ImGuiWindowFlags_NoBringToFrontOnFocus;
     ImGui::Begin("Angler", nullptr, toolbar_flags);
 
-    if(platform != GLFW_PLATFORM_WAYLAND) HandleWindowMovingByKey(); // handle window movement
-    
-    
-    //TODO: smooth this out
-    /*
     if (platform != GLFW_PLATFORM_WAYLAND)
     {
-        ImGuiIO& io = ImGui::GetIO();
-        ImVec2 toolbar_pos = ImGui::GetWindowPos();
-        ImVec2 toolbar_size = ImGui::GetWindowSize();
-        ImVec2 mouse_pos = io.MousePos;
-        bool mouse_in_toolbar = mouse_pos.x >= toolbar_pos.x && mouse_pos.x <= (toolbar_pos.x + toolbar_size.x) &&
-                                mouse_pos.y >= toolbar_pos.y && mouse_pos.y <= (toolbar_pos.y + toolbar_size.y);
-
-        // When toolbar is hovered and left mouse button is pressed, start dragging
-        if (!dragging && mouse_in_toolbar && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-        {
-            dragging = true;
-            // store initial offset between mouse and window pos
-            int wx, wy;
-            glfwGetWindowPos(window, &wx, &wy);
-            drag_offset = ImVec2(io.MousePos.x - wx, io.MousePos.y - wy);
-        }
-
-        // While dragging, move window with mouse
-        if (dragging)
-        {
-            if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
-            {
-                pos.x = (int)(io.MousePos.x - drag_offset.x);
-                pos.y = (int)(io.MousePos.y - drag_offset.y);
-        
-                int wx, wy;
-                glfwGetWindowPos(window, &wx, &wy);
-        
-                // only move if change is significant
-                if (pos.x != wx || pos.y != wy)
-                    ClampWindowToMonitor(window,pos.x,pos.y);
-            }
-            else
-            {
-                dragging = false;
-            }
-        }
-        
-
-    }*/
+        HandleWindowMovingByKey();
+		HandleWindowDragging();
+    }
+    
+   
 
     ImGui::SameLine(ImGui::GetWindowWidth() / 2);
 
@@ -576,6 +606,10 @@ int main()
     }
     std::cout << "running on " << platform_name << std::endl;
     LoadIcons();
+
+    // After creating the window, set initial position
+    glfwSetWindowPos(window, 100, 100);
+    pos = ImVec2(100, 100); // Keep pos in sync
 
     while (!glfwWindowShouldClose(window))
     {

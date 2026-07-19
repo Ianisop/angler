@@ -163,77 +163,83 @@ namespace fileindexer
             return;
         }
 
-        for (const auto &entry : iterator)
+        try {
+            for (const auto& entry : iterator)
+            {
+                if (!indexing) return;
+
+                const auto& path = entry.path();
+                const std::string filename = path.filename().string();
+
+                // Skip our index files
+                if (filename.rfind(".index", 0) == 0)
+                    continue;
+
+                ec.clear();
+
+                if (entry.is_directory(ec) && !ec)
+                {
+                    auto mod_time = entry.last_write_time(ec);
+                    if (ec) continue;
+
+                    auto it = dirs_from_disk.find(path);
+
+                    if (it != dirs_from_disk.end() && mod_time <= it->second.last_modified)
+                    {
+                        dirs_out[path] = it->second; // reuse cached
+                        continue;
+                    }
+
+                    IndexedDirectory dir;
+                    dir.name = filename;
+                    dir.path = path;
+                    dir.last_modified = mod_time;
+                    //dir.size = GetDirectorySize(path);
+
+                    dirs_out[path] = dir;
+                    dirs_from_disk[path] = dir;
+
+                    if (recursive)
+                    {
+                        std::unordered_map<std::filesystem::path, IndexedFile> sub_files;
+                        std::unordered_map<std::filesystem::path, IndexedDirectory> sub_dirs;
+                        IndexDirectory(path, sub_files, sub_dirs, files_from_disk, dirs_from_disk, recursive);
+                        files_out.insert(sub_files.begin(), sub_files.end());
+                        dirs_out.insert(sub_dirs.begin(), sub_dirs.end());
+                    }
+                }
+                else if (entry.is_regular_file(ec) && !ec)
+                {
+                    auto mod_time = entry.last_write_time(ec);
+                    if (ec) continue;
+
+                    auto it = files_from_disk.find(path);
+
+                    if (it != files_from_disk.end() && mod_time <= it->second.last_modified)
+                    {
+                        files_out[path] = it->second; // reuse cached
+                        continue;
+                    }
+
+                    IndexedFile file;
+                    file.name = filename;
+                    file.path = path;
+                    file.size = entry.file_size(ec);
+                    file.extension = path.extension().string();
+                    file.extension_type = GetExtensionType(path);
+                    file.last_modified = mod_time;
+
+                    if (!ec)
+                    {
+                        files_out[path] = file;
+                        files_from_disk[path] = file;
+                    }
+                }
+            }
+        }
+        catch (const std::exception& e)
         {
-            if (!indexing) return;
-
-            const auto &path = entry.path();
-            const std::string filename = path.filename().string();
-
-            // Skip our index files
-            if (filename.rfind(".index", 0) == 0)
-                continue;
-
-            ec.clear();
-
-            if (entry.is_directory(ec) && !ec)
-            {
-                auto mod_time = entry.last_write_time(ec);
-                if (ec) continue;
-
-                auto it = dirs_from_disk.find(path);
-
-                if (it != dirs_from_disk.end() && mod_time <= it->second.last_modified)
-                {
-                    dirs_out[path] = it->second; // reuse cached
-                    continue;
-                }
-
-                IndexedDirectory dir;
-                dir.name = filename;
-                dir.path = path;
-                dir.last_modified = mod_time;
-                dir.size = GetDirectorySize(path);
-
-                dirs_out[path] = dir;
-                dirs_from_disk[path] = dir;
-
-                if (recursive)
-                {
-                    std::unordered_map<std::filesystem::path, IndexedFile> sub_files;
-                    std::unordered_map<std::filesystem::path, IndexedDirectory> sub_dirs;
-                    IndexDirectory(path, sub_files, sub_dirs, files_from_disk, dirs_from_disk, recursive);
-                    files_out.insert(sub_files.begin(), sub_files.end());
-                    dirs_out.insert(sub_dirs.begin(), sub_dirs.end());
-                }
-            }
-            else if (entry.is_regular_file(ec) && !ec)
-            {
-                auto mod_time = entry.last_write_time(ec);
-                if (ec) continue;
-
-                auto it = files_from_disk.find(path);
-
-                if (it != files_from_disk.end() && mod_time <= it->second.last_modified)
-                {
-                    files_out[path] = it->second; // reuse cached
-                    continue;
-                }
-
-                IndexedFile file;
-                file.name = filename;
-                file.path = path;
-                file.size = entry.file_size(ec);
-                file.extension = path.extension().string();
-                file.extension_type = GetExtensionType(path);
-                file.last_modified = mod_time;
-
-                if (!ec)
-                {
-                    files_out[path] = file;
-                    files_from_disk[path] = file;
-                }
-            }
+            std::cerr << "Error during indexing: " << e.what() << "\n";
         }
     }
 
